@@ -34,7 +34,7 @@ app.innerHTML = `
       <div>
         <p class="eyebrow">MVP locale</p>
         <h1>Vibe Screen Reader</h1>
-        <p class="subtitle">Seleziona una zona dello schermo, per esempio la chat Codex in VS Code, e falla leggere ad alta voce con OpenAI.</p>
+        <p class="subtitle">Seleziona una zona dello schermo, per esempio la chat Codex in VS Code, e falla leggere o riassumere ad alta voce con OpenAI.</p>
       </div>
       <div id="health" class="health">Controllo backend…</div>
     </section>
@@ -63,6 +63,13 @@ app.innerHTML = `
             <option value="spagnolo">Spagnolo</option>
           </select>
         </label>
+        <label>
+          Modalità live
+          <select id="liveModeSelect">
+            <option value="read" selected>Lettura</option>
+            <option value="summary">Riassunto</option>
+          </select>
+        </label>
         <label class="check">
           <input id="browserFallback" type="checkbox" checked />
           Fallback voce browser se OpenAI TTS fallisce
@@ -86,7 +93,7 @@ app.innerHTML = `
 
       <aside class="panel sidePanel">
         <div class="panelHeader">
-          <h2>Testo letto</h2>
+          <h2>Voce live</h2>
           <button id="clearBtn" class="ghost">Pulisci</button>
         </div>
         <div id="spokenLog" class="spokenLog"></div>
@@ -113,6 +120,7 @@ const els = {
   clearBtn: document.querySelector('#clearBtn'),
   intervalInput: document.querySelector('#intervalInput'),
   languageSelect: document.querySelector('#languageSelect'),
+  liveModeSelect: document.querySelector('#liveModeSelect'),
   browserFallback: document.querySelector('#browserFallback'),
   previewWrap: document.querySelector('#previewWrap'),
   screenVideo: document.querySelector('#screenVideo'),
@@ -568,7 +576,26 @@ async function connectRealtime() {
 
 function makeRealtimePrompt() {
   const language = els.languageSelect.value;
+  const liveMode = els.liveModeSelect.value;
   const previous = state.lastSpeakText || '(vuoto)';
+
+  if (liveMode === 'summary') {
+    return `
+Riassumi la chat nello screenshot in ${language}.
+
+Obiettivo:
+- Non leggere il testo alla lettera.
+- Spiega in modo breve cosa sta succedendo, cosa e' cambiato e se c'e un punto importante da notare.
+- Ignora interfaccia, pulsanti, sidebar, header, placeholder e scrollbar.
+- Se c'e codice, descrivi l'intento o il risultato, non leggere le righe.
+- Se non c'e niente di nuovo o utile rispetto a "previous_spoken_text", di' solo: nessun nuovo testo.
+- Massimo 2 frasi, tono allegro, chiaro e leggermente veloce.
+
+previous_spoken_text:
+${previous}
+`.trim();
+  }
+
   return `
 Leggi la chat nello screenshot in ${language}.
 

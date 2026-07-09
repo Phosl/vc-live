@@ -2,7 +2,7 @@
 
 Mini web app locale per macOS: condividi la finestra di VS Code, selezioni un rettangolo sopra la chat Codex e l'app legge ad alta voce solo il testo nuovo utile.
 
-È un MVP: non controlla Codex, non scrive dentro VS Code e non usa microfono. Il pulsante **Avvia live API** usa OpenAI Realtime via WebRTC: manda il riquadro selezionato come immagine e riceve audio live dal modello. **Leggi una volta** resta disponibile come percorso classico Vision + TTS.
+È un MVP: non controlla Codex, non scrive dentro VS Code e non usa microfono. Il pulsante **Avvia live API** usa OpenAI Realtime via WebRTC: manda il riquadro selezionato come immagine e riceve audio live dal modello. La modalità live può leggere il testo nuovo oppure riassumere cosa sta succedendo. **Leggi una volta** resta disponibile come percorso classico Vision + TTS.
 
 ## Requisiti
 
@@ -51,7 +51,8 @@ http://127.0.0.1:5173
 4. Clicca **Disegna rettangolo**.
 5. Trascina il mouse sopra la sola area della chat da leggere.
 6. Premi **Leggi una volta** per testare.
-7. Se funziona, premi **Avvia live**.
+7. Scegli **Modalità live → Lettura** oppure **Riassunto**.
+8. Se funziona, premi **Avvia live API**.
 
 La prima lettura può leggere quello che è già visibile. Dopo, l'app prova a leggere solo il testo nuovo.
 

@@ -35,7 +35,9 @@ const REALTIME_INSTRUCTIONS = [
   'Quando ricevi uno screenshot, leggi solo il testo nuovo e significativo della chat.',
   'Ignora barre, pulsanti, sidebar, header, tooltip e testo di interfaccia.',
   'Se non c e niente di nuovo, rispondi solo: nessun nuovo testo.',
-  'Parla in italiano con voce femminile naturale, allegra, chiara e leggermente veloce, senza teatralizzare.'
+  'Parla in italiano con voce femminile naturale, sorridente e luminosa.',
+  'Usa un ritmo vivace, circa il 15 percento piu veloce di un parlato calmo, ma resta sempre comprensibile.',
+  'Suona amichevole e presente, come una voce live di ChatGPT allegra, senza teatralizzare.'
 ].join(' ');
 
 function requireApiKey(res) {
