@@ -14,6 +14,7 @@ const state = {
   timer: null,
   lastRawText: '',
   lastSpeakText: '',
+  lastFrameSignature: null,
   lastAudioUrl: null,
   currentAudio: null,
   realtime: {
@@ -36,7 +37,13 @@ app.innerHTML = `
         <h1>Vibe Screen Reader</h1>
         <p class="subtitle">Seleziona una zona dello schermo, per esempio la chat Codex in VS Code, e falla leggere o riassumere ad alta voce con OpenAI.</p>
       </div>
-      <div id="health" class="health">Controllo backend…</div>
+      <div id="health" class="health" data-ok="pending">
+        <span class="healthDot"></span>
+        <div>
+          <strong id="healthTitle">Controllo backend</strong>
+          <span id="healthDetail">Connessione locale in corso</span>
+        </div>
+      </div>
     </section>
 
     <section class="panel controls">
@@ -66,9 +73,21 @@ app.innerHTML = `
         <label>
           Modalità live
           <select id="liveModeSelect">
-            <option value="read" selected>Lettura</option>
-            <option value="summary">Riassunto</option>
+            <option value="summary" selected>Riassunto</option>
+            <option value="read">Lettura</option>
           </select>
+        </label>
+        <label>
+          Provocazione
+          <input id="provocationInput" type="range" min="0" max="10" value="3" />
+        </label>
+        <label>
+          Sarcasmo
+          <input id="sarcasmInput" type="range" min="0" max="10" value="2" />
+        </label>
+        <label>
+          Serietà
+          <input id="seriousnessInput" type="range" min="0" max="10" value="5" />
         </label>
         <label class="check">
           <input id="browserFallback" type="checkbox" checked />
@@ -121,6 +140,9 @@ const els = {
   intervalInput: document.querySelector('#intervalInput'),
   languageSelect: document.querySelector('#languageSelect'),
   liveModeSelect: document.querySelector('#liveModeSelect'),
+  provocationInput: document.querySelector('#provocationInput'),
+  sarcasmInput: document.querySelector('#sarcasmInput'),
+  seriousnessInput: document.querySelector('#seriousnessInput'),
   browserFallback: document.querySelector('#browserFallback'),
   previewWrap: document.querySelector('#previewWrap'),
   screenVideo: document.querySelector('#screenVideo'),
@@ -129,7 +151,9 @@ const els = {
   captureCanvas: document.querySelector('#captureCanvas'),
   status: document.querySelector('#status'),
   spokenLog: document.querySelector('#spokenLog'),
-  rawTextBox: document.querySelector('#rawTextBox')
+  rawTextBox: document.querySelector('#rawTextBox'),
+  healthTitle: document.querySelector('#healthTitle'),
+  healthDetail: document.querySelector('#healthDetail')
 };
 
 function setStatus(message, type = 'normal') {
@@ -137,8 +161,9 @@ function setStatus(message, type = 'normal') {
   els.status.dataset.type = type;
 }
 
-function setHealth(message, ok = true) {
-  els.health.textContent = message;
+function setHealth(title, ok = true, detail = '') {
+  els.healthTitle.textContent = title;
+  els.healthDetail.textContent = detail;
   els.health.dataset.ok = String(ok);
 }
 
@@ -169,6 +194,53 @@ function canonical(text) {
     .replace(/[“”]/g, '"')
     .replace(/[’]/g, "'")
     .trim();
+}
+
+function getPersonalitySettings() {
+  return {
+    provocation: Number(els.provocationInput.value || 0),
+    sarcasm: Number(els.sarcasmInput.value || 0),
+    seriousness: Number(els.seriousnessInput.value || 0)
+  };
+}
+
+function getPersonalityPrompt() {
+  const { provocation, sarcasm, seriousness } = getPersonalitySettings();
+  const tone = [];
+
+  if (provocation <= 2) {
+    tone.push('Provocazione bassa: tono dolce, professionale e amichevole.');
+  } else if (provocation <= 6) {
+    tone.push('Provocazione media: tono caldo, complice e leggermente flirtante.');
+  } else {
+    tone.push('Provocazione alta: tono audace, giocoso e provocante in modo elegante, mai esplicito.');
+  }
+
+  if (sarcasm <= 2) {
+    tone.push('Sarcasmo basso: niente battute taglienti, resta morbida.');
+  } else if (sarcasm <= 6) {
+    tone.push('Sarcasmo medio: usa micro-battute leggere quando naturale.');
+  } else {
+    tone.push('Sarcasmo alto: puoi essere pungente e ironica, ma mai cattiva o distraente.');
+  }
+
+  if (seriousness <= 2) {
+    tone.push('Serieta bassa: piu giocosa e rilassata.');
+  } else if (seriousness <= 6) {
+    tone.push('Serieta media: bilancia gioco e precisione tecnica.');
+  } else {
+    tone.push('Serieta alta: priorita a chiarezza, precisione e utilita.');
+  }
+
+  tone.push('Resta sempre utile, chiara, non esplicita e concentrata sul lavoro.');
+  return tone.join(' ');
+}
+
+function frameDifference(a, b) {
+  if (!a || !b || a.length !== b.length) return Infinity;
+  let total = 0;
+  for (let i = 0; i < a.length; i += 1) total += Math.abs(a[i] - b[i]);
+  return total / a.length;
 }
 
 function clamp(n, min, max) {
@@ -221,12 +293,12 @@ async function checkBackend() {
     const json = await res.json();
     if (!json.ok) throw new Error('Backend non pronto');
     if (!json.hasApiKey) {
-      setHealth('Backend ok, API key da inserire', false);
+      setHealth('API key mancante', false, 'Aggiungi OPENAI_API_KEY nel file .env');
     } else {
-      setHealth(`Backend ok · ${json.visionModel} · live ${json.realtimeVoice || json.ttsVoice}`, true);
+      setHealth('Live pronto', true, `${json.realtimeModel || json.visionModel} · voce ${json.realtimeVoice || json.ttsVoice}`);
     }
   } catch {
-    setHealth('Backend non raggiungibile', false);
+    setHealth('Backend offline', false, 'Avvia npm run dev o controlla la porta');
   }
 }
 
@@ -254,6 +326,7 @@ async function shareScreen() {
     state.selection = null;
     state.lastRawText = '';
     state.lastSpeakText = '';
+    state.lastFrameSignature = null;
     els.rawTextBox.textContent = 'Ancora nulla.';
 
     await els.screenVideo.play();
@@ -278,12 +351,17 @@ async function shareScreen() {
 
 function enableSelection() {
   if (!state.stream) return;
+  state.lastFrameSignature = null;
   state.canDrawSelection = true;
   setStatus('Trascina con il mouse sulla preview per disegnare il rettangolo della chat.');
   els.previewWrap.classList.add('selecting');
 }
 
 function captureSelection() {
+  return captureSelectionFrame().image;
+}
+
+function captureSelectionFrame() {
   if (!state.stream) throw new Error('Prima devi condividere lo schermo.');
   if (!state.selection || state.selection.w < 10 || state.selection.h < 10) {
     throw new Error('Prima devi disegnare un rettangolo valido.');
@@ -312,7 +390,22 @@ function captureSelection() {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, targetW, targetH);
 
-  return canvas.toDataURL('image/jpeg', 0.82);
+  const signatureSize = 18;
+  const signatureCanvas = document.createElement('canvas');
+  signatureCanvas.width = signatureSize;
+  signatureCanvas.height = signatureSize;
+  const signatureCtx = signatureCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+  signatureCtx.drawImage(canvas, 0, 0, signatureSize, signatureSize);
+  const pixels = signatureCtx.getImageData(0, 0, signatureSize, signatureSize).data;
+  const signature = [];
+  for (let i = 0; i < pixels.length; i += 4) {
+    signature.push(Math.round((pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3));
+  }
+
+  return {
+    image: canvas.toDataURL('image/jpeg', 0.82),
+    signature
+  };
 }
 
 async function readOnce({ fromLive = false } = {}) {
@@ -374,7 +467,10 @@ async function speak(text) {
     const res = await fetch('/api/speech', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({
+        text,
+        personality: getPersonalitySettings()
+      })
     });
 
     if (!res.ok) {
@@ -574,41 +670,37 @@ async function connectRealtime() {
   });
 }
 
-function makeRealtimePrompt() {
+function makeRealtimePrompt(text) {
   const language = els.languageSelect.value;
   const liveMode = els.liveModeSelect.value;
-  const previous = state.lastSpeakText || '(vuoto)';
+  const personality = getPersonalityPrompt();
 
   if (liveMode === 'summary') {
     return `
-Riassumi la chat nello screenshot in ${language}.
+Pronuncia in ${language} questo riassunto live della parte nuova della chat.
 
-Obiettivo:
-- Non leggere il testo alla lettera.
-- Spiega in modo breve cosa sta succedendo, cosa e' cambiato e se c'e un punto importante da notare.
-- Ignora interfaccia, pulsanti, sidebar, header, placeholder e scrollbar.
-- Se c'e codice, descrivi l'intento o il risultato, non leggere le righe.
-- Se non c'e niente di nuovo o utile rispetto a "previous_spoken_text", di' solo: nessun nuovo testo.
-- Massimo 2 frasi, tono allegro, chiaro e leggermente veloce.
+Regole:
+- Di' solo questo contenuto, senza preamboli tipo "ecco il riassunto".
+- Ritmo leggermente veloce, parole sempre chiare.
+- ${personality}
+- Non aggiungere dettagli non presenti.
 
-previous_spoken_text:
-${previous}
+Testo da pronunciare:
+${text}
 `.trim();
   }
 
   return `
-Leggi la chat nello screenshot in ${language}.
+Pronuncia in ${language} solo questa parte nuova della chat.
 
 Regole:
-- Leggi solo testo nuovo e significativo rispetto a "previous_spoken_text".
-- Ignora interfaccia, pulsanti, sidebar, header, placeholder e scrollbar.
-- Se c'e codice, riassumilo invece di leggere ogni riga.
-- Se il testo e' parziale o ancora in caricamento, aspetta e leggi solo cio' che sembra stabile.
-- Se non c'e niente di nuovo, di' solo: nessun nuovo testo.
-- Massimo 3 frasi, tono allegro e leggermente veloce.
+- Di' solo questo contenuto, senza preamboli.
+- Ritmo leggermente veloce, parole sempre chiare.
+- ${personality}
+- Non rileggere o inventare altro.
 
-previous_spoken_text:
-${previous}
+Testo da pronunciare:
+${text}
 `.trim();
 }
 
@@ -618,20 +710,56 @@ async function readRealtimeFrame() {
   try {
     state.busy = true;
     setButtons();
-    const image = captureSelection();
+    const frame = captureSelectionFrame();
+    const difference = frameDifference(frame.signature, state.lastFrameSignature);
+    if (difference < 2.8) {
+      setStatus('Live API attivo. Il ritaglio non e cambiato, non ripeto.');
+      return;
+    }
+    state.lastFrameSignature = frame.signature;
+
+    const res = await fetch('/api/read-screen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: frame.image,
+        previousRawText: state.lastRawText,
+        language: els.languageSelect.value,
+        mode: els.liveModeSelect.value === 'summary' ? 'codex-chat-summary' : 'codex-chat'
+      })
+    });
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Errore lettura live');
+
+    const rawText = String(json.rawText || '').trim();
+    const speakText = String(json.speakText || '').trim();
+    const rawChanged = rawText && canonical(rawText) !== canonical(state.lastRawText);
+    const speakChanged = speakText && canonical(speakText) !== canonical(state.lastSpeakText);
+
+    if (rawText) {
+      state.lastRawText = rawText;
+      els.rawTextBox.textContent = rawText;
+    }
+
+    if (!json.shouldSpeak || !speakText || !rawChanged || !speakChanged) {
+      setStatus('Live API attivo. Nessun testo nuovo da dire.');
+      return;
+    }
+
+    state.lastSpeakText = speakText;
     sendRealtimeEvent({
       type: 'conversation.item.create',
       item: {
         type: 'message',
         role: 'user',
         content: [
-          { type: 'input_text', text: makeRealtimePrompt() },
-          { type: 'input_image', image_url: image }
+          { type: 'input_text', text: makeRealtimePrompt(speakText) }
         ]
       }
     });
     sendRealtimeEvent({ type: 'response.create' });
-    setStatus('Live API: ho mandato lo screenshot a Realtime.');
+    setStatus('Live API: nuovo testo trovato, lo dico adesso.');
   } catch (error) {
     console.error(error);
     setStatus(error.message || 'Errore durante il live Realtime.', 'error');
@@ -671,6 +799,7 @@ function stopLive() {
 function clearAll() {
   state.lastRawText = '';
   state.lastSpeakText = '';
+  state.lastFrameSignature = null;
   els.rawTextBox.textContent = 'Ancora nulla.';
   els.spokenLog.innerHTML = '';
   setStatus('Memoria pulita. La prossima lettura riparte da zero.');

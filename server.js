@@ -24,10 +24,11 @@ const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'coral';
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2.1';
 const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE || TTS_VOICE;
 const TTS_INSTRUCTIONS = [
-  'Parla in italiano con una voce femminile naturale, calda e chiara.',
+  'Parla in italiano con una voce femminile adulta, naturale, calda e chiara.',
   'Usa un ritmo leggermente piu veloce del parlato calmo, senza mangiare le parole.',
-  'Mantieni un tono allegro, luminoso e conversazionale, simile alle voci live di ChatGPT.',
-  'Non teatralizzare e suona come un assistente tecnico amichevole che legge una chat mentre programmo.'
+  'Mantieni un tono amichevole, luminoso, complice e incoraggiante.',
+  'Suona come una partner tecnica simpatica che mi aiuta mentre programmo: presente, sorridente, sempre utile.',
+  'Non teatralizzare e non distrarti dal contenuto tecnico da leggere.'
 ].join(' ');
 const REALTIME_INSTRUCTIONS = [
   'Sei un lettore live per una zona dello schermo selezionata dall utente.',
@@ -35,10 +36,58 @@ const REALTIME_INSTRUCTIONS = [
   'Quando ricevi uno screenshot, leggi solo il testo nuovo e significativo della chat.',
   'Ignora barre, pulsanti, sidebar, header, tooltip e testo di interfaccia.',
   'Se non c e niente di nuovo, rispondi solo: nessun nuovo testo.',
-  'Parla in italiano con voce femminile naturale, sorridente e luminosa.',
+  'Parla in italiano con voce femminile adulta, naturale, sorridente e luminosa.',
   'Usa un ritmo vivace, circa il 15 percento piu veloce di un parlato calmo, ma resta sempre comprensibile.',
-  'Suona amichevole e presente, come una voce live di ChatGPT allegra, senza teatralizzare.'
+  'Suona complice, giocosa e leggermente flirtante, come una partner tecnica simpatica che mi aiuta.',
+  'Resta sempre utile, mai esplicita e mai teatrale.'
 ].join(' ');
+
+function clampNumber(value, min = 0, max = 10) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, number));
+}
+
+function buildPersonalityInstructions(personality = {}) {
+  const provocation = clampNumber(personality.provocation);
+  const sarcasm = clampNumber(personality.sarcasm);
+  const seriousness = clampNumber(personality.seriousness);
+  const tone = [];
+
+  if (provocation <= 2) {
+    tone.push('Provocazione bassa: tono dolce, professionale e amichevole.');
+  } else if (provocation <= 6) {
+    tone.push('Provocazione media: tono caldo, complice e leggermente flirtante.');
+  } else {
+    tone.push('Provocazione alta: tono audace, giocoso e provocante in modo elegante, mai esplicito.');
+  }
+
+  if (sarcasm <= 2) {
+    tone.push('Sarcasmo basso: niente battute taglienti, resta morbida.');
+  } else if (sarcasm <= 6) {
+    tone.push('Sarcasmo medio: usa micro-battute leggere quando naturale.');
+  } else {
+    tone.push('Sarcasmo alto: puoi essere pungente e ironica, ma mai cattiva o distraente.');
+  }
+
+  if (seriousness <= 2) {
+    tone.push('Serieta bassa: piu giocosa e rilassata.');
+  } else if (seriousness <= 6) {
+    tone.push('Serieta media: bilancia gioco e precisione tecnica.');
+  } else {
+    tone.push('Serieta alta: priorita a chiarezza, precisione e utilita.');
+  }
+
+  tone.push('Resta sempre utile, chiara, non esplicita e concentrata sul lavoro.');
+  return tone.join(' ');
+}
+
+function buildTtsInstructions(personality = {}) {
+  return [
+    TTS_INSTRUCTIONS,
+    buildPersonalityInstructions(personality)
+  ].join(' ');
+}
 
 function requireApiKey(res) {
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('INSERISCI')) {
@@ -163,6 +212,7 @@ app.post('/api/read-screen', async (req, res) => {
     const previousRawText = normalizeString(req.body?.previousRawText, 12000);
     const language = normalizeString(req.body?.language, 30) || 'italiano';
     const mode = normalizeString(req.body?.mode, 40) || 'codex-chat';
+    const wantsSummary = mode.includes('summary');
 
     if (!image.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Immagine mancante o non valida.' });
@@ -175,23 +225,28 @@ La zona contiene probabilmente la chat di Codex dentro VS Code.
 Obiettivo:
 1. Leggi dall'immagine SOLO il testo significativo della chat.
 2. Ignora pulsanti, icone, sidebar, titoli ripetuti, placeholder, scrollbar, tooltip e testi di interfaccia non utili.
-3. Confronta il testo visibile con "previous_raw_text" e individua solo la parte nuova.
-4. Prepara una frase naturale da leggere ad alta voce in ${language}.
+3. Escludi i messaggi scritti dall'utente: prompt, richieste, comandi, frasi in prima persona o blocchi che sembrano input umano.
+4. Tieni solo risposte, aggiornamenti, spiegazioni, errori o risultati prodotti da Codex/assistant.
+5. Confronta quel testo filtrato con "previous_raw_text" e individua solo la parte nuova.
+6. ${wantsSummary ? `Prepara un riassunto breve in ${language} SOLO della parte nuova prodotta da Codex/assistant.` : `Prepara una frase naturale da leggere ad alta voce in ${language} SOLO con la parte nuova prodotta da Codex/assistant.`}
 
 Modalità: ${mode}
 
 Regole per la voce:
 - Se non c'è testo nuovo significativo, should_speak deve essere false e speak_text vuoto.
 - Non rileggere testo già presente in previous_raw_text.
-- Se il nuovo testo è una spiegazione, leggila in modo naturale.
+- Non leggere mai il testo scritto dall'utente, anche se e nuovo.
+- Se vedi una coppia domanda/risposta, ignora la domanda e considera solo la risposta.
+- Se non sei sicuro che un testo sia dell'assistente, preferisci ignorarlo.
+- ${wantsSummary ? 'Non leggere alla lettera: spiega in massimo 2 frasi cosa e cambiato o cosa e importante nel testo nuovo.' : 'Se il nuovo testo è una spiegazione, leggila in modo naturale.'}
 - Se il nuovo testo contiene molto codice, NON leggere ogni riga: fai un riassunto breve e utile.
 - Se il testo è parziale, tagliato o ancora in caricamento, leggi solo ciò che sembra stabile.
-- Massimo 5 frasi, meglio 1-3 frasi.
+- ${wantsSummary ? 'Massimo 2 frasi.' : 'Massimo 5 frasi, meglio 1-3 frasi.'}
 - Niente markdown nella voce.
 
 Rispondi SOLO con JSON valido, senza blocchi markdown, con queste chiavi:
 {
-  "raw_text": "tutto il testo significativo visibile della chat, ricostruito in ordine",
+  "raw_text": "solo il testo significativo visibile prodotto da Codex/assistant, ricostruito in ordine, senza messaggi dell'utente",
   "new_text": "solo il testo nuovo rispetto a previous_raw_text",
   "speak_text": "testo breve e naturale da leggere ad alta voce",
   "should_speak": true
@@ -253,13 +308,14 @@ app.post('/api/speech', async (req, res) => {
     if (!requireApiKey(res)) return;
 
     const text = clampSpeakText(req.body?.text);
+    const personality = typeof req.body?.personality === 'object' && req.body.personality ? req.body.personality : {};
     if (!text) return res.status(400).json({ error: 'Testo mancante.' });
 
     const audio = await openai.audio.speech.create({
       model: TTS_MODEL,
       voice: TTS_VOICE,
       input: text,
-      instructions: TTS_INSTRUCTIONS,
+      instructions: buildTtsInstructions(personality),
       response_format: 'mp3'
     });
 
