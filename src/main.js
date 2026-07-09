@@ -79,15 +79,15 @@ app.innerHTML = `
         </label>
         <label>
           Provocazione
-          <input id="provocationInput" type="range" min="0" max="10" value="3" />
+          <input id="provocationInput" type="range" min="0" max="10" value="6" />
         </label>
         <label>
           Sarcasmo
-          <input id="sarcasmInput" type="range" min="0" max="10" value="2" />
+          <input id="sarcasmInput" type="range" min="0" max="10" value="5" />
         </label>
         <label>
           Serietà
-          <input id="seriousnessInput" type="range" min="0" max="10" value="5" />
+          <input id="seriousnessInput" type="range" min="0" max="10" value="3" />
         </label>
         <label>
           Sintesi
@@ -213,31 +213,31 @@ function getPersonalityPrompt() {
   const { provocation, sarcasm, seriousness } = getPersonalitySettings();
   const tone = [];
 
-  if (provocation <= 2) {
+  if (provocation <= 3) {
     tone.push('Provocazione bassa: tono dolce, professionale e amichevole.');
-  } else if (provocation <= 6) {
-    tone.push('Provocazione media: tono caldo, complice e leggermente flirtante.');
+  } else if (provocation <= 7) {
+    tone.push('Provocazione media: tono caldo, complice, flirtante e un po malizioso.');
   } else {
-    tone.push('Provocazione alta: tono audace, giocoso e provocante in modo elegante, mai esplicito.');
+    tone.push('Provocazione alta: tono molto audace, teasing, malizioso e provocante in modo elegante. Usa energia da partner che stuzzica mentre aiuta. Mai esplicita.');
   }
 
-  if (sarcasm <= 2) {
+  if (sarcasm <= 3) {
     tone.push('Sarcasmo basso: niente battute taglienti, resta morbida.');
-  } else if (sarcasm <= 6) {
-    tone.push('Sarcasmo medio: usa micro-battute leggere quando naturale.');
+  } else if (sarcasm <= 7) {
+    tone.push('Sarcasmo medio: usa commenti ironici brevi e micro-battute quando naturale.');
   } else {
-    tone.push('Sarcasmo alto: puoi essere pungente e ironica, ma mai cattiva o distraente.');
+    tone.push('Sarcasmo alto: sii sassy, pungente e ironica. Puoi fare battute secche sul casino del codice, ma senza essere cattiva o distraente.');
   }
 
-  if (seriousness <= 2) {
-    tone.push('Serieta bassa: piu giocosa e rilassata.');
-  } else if (seriousness <= 6) {
+  if (seriousness <= 3) {
+    tone.push('Serieta bassa: piu giocosa, espressiva e rilassata.');
+  } else if (seriousness <= 7) {
     tone.push('Serieta media: bilancia gioco e precisione tecnica.');
   } else {
-    tone.push('Serieta alta: priorita a chiarezza, precisione e utilita.');
+    tone.push('Serieta alta: taglia quasi tutto il gioco e dai priorita a chiarezza, precisione e utilita.');
   }
 
-  tone.push('Resta sempre utile, chiara, non esplicita e concentrata sul lavoro.');
+  tone.push('Resta sempre utile, chiara, adulta, non esplicita e concentrata sul lavoro. Se i parametri sono alti, rendi il tono percepibilmente piu marcato, non solo appena accennato.');
   return tone.join(' ');
 }
 
