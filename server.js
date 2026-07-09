@@ -89,6 +89,17 @@ function buildTtsInstructions(personality = {}) {
   ].join(' ');
 }
 
+function buildSummaryLengthInstruction(value) {
+  const summaryLength = clampNumber(value);
+  if (summaryLength <= 2) {
+    return 'Riassunto molto corto: massimo una frase breve, circa 8-14 parole. Vai dritto al punto.';
+  }
+  if (summaryLength <= 6) {
+    return 'Riassunto medio: massimo 1-2 frasi brevi. Dai solo il contesto essenziale.';
+  }
+  return 'Riassunto dettagliato: massimo 3 frasi, includendo il punto importante e il prossimo passo se evidente.';
+}
+
 function requireApiKey(res) {
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('INSERISCI')) {
     res.status(500).json({
@@ -213,6 +224,7 @@ app.post('/api/read-screen', async (req, res) => {
     const language = normalizeString(req.body?.language, 30) || 'italiano';
     const mode = normalizeString(req.body?.mode, 40) || 'codex-chat';
     const wantsSummary = mode.includes('summary');
+    const summaryLengthInstruction = buildSummaryLengthInstruction(req.body?.summaryLength);
 
     if (!image.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Immagine mancante o non valida.' });
@@ -238,10 +250,10 @@ Regole per la voce:
 - Non leggere mai il testo scritto dall'utente, anche se e nuovo.
 - Se vedi una coppia domanda/risposta, ignora la domanda e considera solo la risposta.
 - Se non sei sicuro che un testo sia dell'assistente, preferisci ignorarlo.
-- ${wantsSummary ? 'Non leggere alla lettera: spiega in massimo 2 frasi cosa e cambiato o cosa e importante nel testo nuovo.' : 'Se il nuovo testo è una spiegazione, leggila in modo naturale.'}
+- ${wantsSummary ? 'Non leggere alla lettera: spiega cosa e cambiato o cosa e importante nel testo nuovo.' : 'Se il nuovo testo è una spiegazione, leggila in modo naturale.'}
 - Se il nuovo testo contiene molto codice, NON leggere ogni riga: fai un riassunto breve e utile.
 - Se il testo è parziale, tagliato o ancora in caricamento, leggi solo ciò che sembra stabile.
-- ${wantsSummary ? 'Massimo 2 frasi.' : 'Massimo 5 frasi, meglio 1-3 frasi.'}
+- ${wantsSummary ? summaryLengthInstruction : 'Massimo 5 frasi, meglio 1-3 frasi.'}
 - Niente markdown nella voce.
 
 Rispondi SOLO con JSON valido, senza blocchi markdown, con queste chiavi:

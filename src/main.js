@@ -89,6 +89,10 @@ app.innerHTML = `
           Serietà
           <input id="seriousnessInput" type="range" min="0" max="10" value="5" />
         </label>
+        <label>
+          Sintesi
+          <input id="summaryLengthInput" type="range" min="0" max="10" value="2" />
+        </label>
         <label class="check">
           <input id="browserFallback" type="checkbox" checked />
           Fallback voce browser se OpenAI TTS fallisce
@@ -143,6 +147,7 @@ const els = {
   provocationInput: document.querySelector('#provocationInput'),
   sarcasmInput: document.querySelector('#sarcasmInput'),
   seriousnessInput: document.querySelector('#seriousnessInput'),
+  summaryLengthInput: document.querySelector('#summaryLengthInput'),
   browserFallback: document.querySelector('#browserFallback'),
   previewWrap: document.querySelector('#previewWrap'),
   screenVideo: document.querySelector('#screenVideo'),
@@ -234,6 +239,22 @@ function getPersonalityPrompt() {
 
   tone.push('Resta sempre utile, chiara, non esplicita e concentrata sul lavoro.');
   return tone.join(' ');
+}
+
+function getSummaryLength() {
+  return Number(els.summaryLengthInput.value || 0);
+}
+
+function getSummaryLengthPrompt() {
+  const summaryLength = getSummaryLength();
+
+  if (summaryLength <= 2) {
+    return 'Sintesi molto corta: massimo una frase breve, circa 8-14 parole. Vai dritta al punto.';
+  }
+  if (summaryLength <= 6) {
+    return 'Sintesi media: massimo 1-2 frasi brevi. Dai solo il contesto essenziale.';
+  }
+  return 'Sintesi dettagliata: massimo 3 frasi, includendo il punto importante e il prossimo passo se evidente.';
 }
 
 function frameDifference(a, b) {
@@ -674,6 +695,7 @@ function makeRealtimePrompt(text) {
   const language = els.languageSelect.value;
   const liveMode = els.liveModeSelect.value;
   const personality = getPersonalityPrompt();
+  const summaryLength = getSummaryLengthPrompt();
 
   if (liveMode === 'summary') {
     return `
@@ -683,6 +705,7 @@ Regole:
 - Di' solo questo contenuto, senza preamboli tipo "ecco il riassunto".
 - Ritmo leggermente veloce, parole sempre chiare.
 - ${personality}
+- ${summaryLength}
 - Non aggiungere dettagli non presenti.
 
 Testo da pronunciare:
@@ -725,7 +748,8 @@ async function readRealtimeFrame() {
         image: frame.image,
         previousRawText: state.lastRawText,
         language: els.languageSelect.value,
-        mode: els.liveModeSelect.value === 'summary' ? 'codex-chat-summary' : 'codex-chat'
+        mode: els.liveModeSelect.value === 'summary' ? 'codex-chat-summary' : 'codex-chat',
+        summaryLength: getSummaryLength()
       })
     });
 
