@@ -15,7 +15,15 @@ const state = {
   lastRawText: '',
   lastSpeakText: '',
   lastAudioUrl: null,
-  currentAudio: null
+  currentAudio: null,
+  realtime: {
+    pc: null,
+    dc: null,
+    audio: null,
+    connected: false,
+    responding: false,
+    transcript: ''
+  }
 };
 
 const app = document.querySelector('#app');
@@ -36,7 +44,7 @@ app.innerHTML = `
         <button id="shareBtn" class="primary">1. Condividi schermo / VS Code</button>
         <button id="selectBtn" disabled>2. Disegna rettangolo</button>
         <button id="readOnceBtn" disabled>Leggi una volta</button>
-        <button id="liveBtn" disabled>Avvia live</button>
+        <button id="liveBtn" disabled>Avvia live API</button>
         <button id="stopLiveBtn" disabled>Ferma live</button>
         <button id="stopAudioBtn">Stop audio</button>
       </div>
@@ -134,6 +142,7 @@ function setButtons() {
   els.liveBtn.disabled = !hasStream || !hasSelection || state.live;
   els.stopLiveBtn.disabled = !state.live;
   els.shareBtn.textContent = hasStream ? 'Cambia schermo / finestra' : '1. Condividi schermo / VS Code';
+  els.liveBtn.textContent = state.live ? 'Live API attivo' : 'Avvia live API';
 }
 
 function logSpoken(text) {
@@ -206,7 +215,7 @@ async function checkBackend() {
     if (!json.hasApiKey) {
       setHealth('Backend ok, API key da inserire', false);
     } else {
-      setHealth(`Backend ok · ${json.visionModel} · voce ${json.ttsVoice}`, true);
+      setHealth(`Backend ok · ${json.visionModel} · live ${json.realtimeVoice || json.ttsVoice}`, true);
     }
   } catch {
     setHealth('Backend non raggiungibile', false);
@@ -407,27 +416,228 @@ function stopAudio(options = {}) {
     state.currentAudio.pause();
     state.currentAudio.currentTime = 0;
   }
+  if (state.realtime.audio) {
+    state.realtime.audio.pause();
+    state.realtime.audio.srcObject = null;
+  }
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (!options.keepSpeakingFlag) state.speaking = false;
 }
 
-function startLive() {
-  if (state.live) return;
-  state.live = true;
-  setStatus('Live attivo. Leggo solo quando trovo testo nuovo.');
-  setButtons();
+function resetRealtime() {
+  if (state.realtime.dc) {
+    state.realtime.dc.close();
+  }
+  if (state.realtime.pc) {
+    state.realtime.pc.getSenders().forEach((sender) => sender.track?.stop());
+    state.realtime.pc.close();
+  }
+  if (state.realtime.audio) {
+    state.realtime.audio.pause();
+    state.realtime.audio.srcObject = null;
+    state.realtime.audio.remove();
+  }
+  state.realtime = {
+    pc: null,
+    dc: null,
+    audio: null,
+    connected: false,
+    responding: false,
+    transcript: ''
+  };
+}
 
-  const interval = Math.max(1200, Number(els.intervalInput.value || DEFAULT_INTERVAL));
-  readOnce({ fromLive: true });
-  state.timer = window.setInterval(() => {
-    if (!state.busy && !state.speaking) readOnce({ fromLive: true });
-  }, interval);
+function sendRealtimeEvent(event) {
+  const dc = state.realtime.dc;
+  if (!dc || dc.readyState !== 'open') {
+    throw new Error('Sessione Realtime non pronta.');
+  }
+  dc.send(JSON.stringify(event));
+}
+
+function handleRealtimeEvent(event) {
+  const data = JSON.parse(event.data);
+
+  if (data.type === 'error') {
+    console.error('Realtime error:', data);
+    setStatus(data.error?.message || 'Errore Realtime.', 'error');
+    state.realtime.responding = false;
+    state.speaking = false;
+    setButtons();
+    return;
+  }
+
+  if (data.type === 'response.created') {
+    state.realtime.responding = true;
+    state.realtime.transcript = '';
+    state.speaking = true;
+    setButtons();
+    return;
+  }
+
+  if (data.type === 'response.audio_transcript.delta' || data.type === 'response.output_text.delta') {
+    state.realtime.transcript += data.delta || '';
+    return;
+  }
+
+  if (data.type === 'response.audio_transcript.done' || data.type === 'response.output_text.done') {
+    if (data.transcript || data.text) {
+      state.realtime.transcript = data.transcript || data.text;
+    }
+    return;
+  }
+
+  if (data.type === 'response.done') {
+    const spokenText = state.realtime.transcript.trim();
+    if (spokenText && !/^nessun nuovo testo\.?$/i.test(spokenText)) {
+      state.lastSpeakText = spokenText;
+      logSpoken(spokenText);
+      els.rawTextBox.textContent = spokenText;
+    }
+    state.realtime.responding = false;
+    state.speaking = false;
+    setStatus(state.live ? 'Live API attivo. Aspetto nuovo testo nello screenshot.' : 'Live API pronto.');
+    setButtons();
+  }
+}
+
+async function connectRealtime() {
+  if (state.realtime.connected) return;
+
+  if (!('RTCPeerConnection' in window)) {
+    throw new Error('WebRTC non disponibile in questo browser.');
+  }
+
+  resetRealtime();
+
+  const pc = new RTCPeerConnection();
+  const audio = document.createElement('audio');
+  audio.autoplay = true;
+  audio.className = 'hidden';
+  document.body.append(audio);
+
+  pc.ontrack = (event) => {
+    audio.srcObject = event.streams[0];
+  };
+  pc.addTransceiver('audio', { direction: 'recvonly' });
+
+  const dc = pc.createDataChannel('oai-events');
+  dc.onmessage = handleRealtimeEvent;
+  dc.onclose = () => {
+    state.realtime.connected = false;
+    state.realtime.responding = false;
+    state.speaking = false;
+    setButtons();
+  };
+
+  state.realtime.pc = pc;
+  state.realtime.dc = dc;
+  state.realtime.audio = audio;
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  const res = await fetch('/api/realtime/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/sdp' },
+    body: offer.sdp
+  });
+
+  const answer = await res.text();
+  if (!res.ok) {
+    let errorMessage = answer;
+    try {
+      errorMessage = JSON.parse(answer).error || answer;
+    } catch {
+      // Keep the SDP/error text as-is.
+    }
+    throw new Error(errorMessage || 'Errore apertura sessione Realtime.');
+  }
+
+  await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+
+  await new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('Data channel Realtime non pronto.')), 10000);
+    dc.onopen = () => {
+      window.clearTimeout(timeout);
+      state.realtime.connected = true;
+      resolve();
+    };
+  });
+}
+
+function makeRealtimePrompt() {
+  const language = els.languageSelect.value;
+  const previous = state.lastSpeakText || '(vuoto)';
+  return `
+Leggi la chat nello screenshot in ${language}.
+
+Regole:
+- Leggi solo testo nuovo e significativo rispetto a "previous_spoken_text".
+- Ignora interfaccia, pulsanti, sidebar, header, placeholder e scrollbar.
+- Se c'e codice, riassumilo invece di leggere ogni riga.
+- Se il testo e' parziale o ancora in caricamento, aspetta e leggi solo cio' che sembra stabile.
+- Se non c'e niente di nuovo, di' solo: nessun nuovo testo.
+- Massimo 3 frasi, tono allegro e leggermente veloce.
+
+previous_spoken_text:
+${previous}
+`.trim();
+}
+
+async function readRealtimeFrame() {
+  if (!state.live || state.realtime.responding || state.busy) return;
+
+  try {
+    state.busy = true;
+    setButtons();
+    const image = captureSelection();
+    sendRealtimeEvent({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: makeRealtimePrompt() },
+          { type: 'input_image', image_url: image }
+        ]
+      }
+    });
+    sendRealtimeEvent({ type: 'response.create' });
+    setStatus('Live API: ho mandato lo screenshot a Realtime.');
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || 'Errore durante il live Realtime.', 'error');
+  } finally {
+    state.busy = false;
+    setButtons();
+  }
+}
+
+async function startLive() {
+  if (state.live) return;
+  try {
+    state.live = true;
+    setStatus('Apro sessione Live API…');
+    setButtons();
+    await connectRealtime();
+
+    const interval = Math.max(1600, Number(els.intervalInput.value || DEFAULT_INTERVAL));
+    setStatus('Live API attivo. Leggo quando trovo testo nuovo.');
+    await readRealtimeFrame();
+    state.timer = window.setInterval(readRealtimeFrame, interval);
+  } catch (error) {
+    console.error(error);
+    stopLive();
+    setStatus(error.message || 'Errore durante l avvio Live API.', 'error');
+  }
 }
 
 function stopLive() {
   if (state.timer) window.clearInterval(state.timer);
   state.timer = null;
   state.live = false;
+  resetRealtime();
   setButtons();
 }
 

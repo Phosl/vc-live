@@ -21,11 +21,21 @@ const openai = new OpenAI({
 const VISION_MODEL = process.env.OPENAI_VISION_MODEL || 'gpt-4.1-mini';
 const TTS_MODEL = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
 const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'coral';
+const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2.1';
+const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE || TTS_VOICE;
 const TTS_INSTRUCTIONS = [
   'Parla in italiano con una voce femminile naturale, calda e chiara.',
   'Usa un ritmo leggermente piu veloce del parlato calmo, senza mangiare le parole.',
   'Mantieni un tono allegro, luminoso e conversazionale, simile alle voci live di ChatGPT.',
   'Non teatralizzare e suona come un assistente tecnico amichevole che legge una chat mentre programmo.'
+].join(' ');
+const REALTIME_INSTRUCTIONS = [
+  'Sei un lettore live per una zona dello schermo selezionata dall utente.',
+  'La zona contiene probabilmente una chat tecnica di Codex dentro VS Code.',
+  'Quando ricevi uno screenshot, leggi solo il testo nuovo e significativo della chat.',
+  'Ignora barre, pulsanti, sidebar, header, tooltip e testo di interfaccia.',
+  'Se non c e niente di nuovo, rispondi solo: nessun nuovo testo.',
+  'Parla in italiano con voce femminile naturale, allegra, chiara e leggermente veloce, senza teatralizzare.'
 ].join(' ');
 
 function requireApiKey(res) {
@@ -89,8 +99,58 @@ app.get('/api/health', (_req, res) => {
     hasApiKey: Boolean(process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes('INSERISCI')),
     visionModel: VISION_MODEL,
     ttsModel: TTS_MODEL,
-    ttsVoice: TTS_VOICE
+    ttsVoice: TTS_VOICE,
+    realtimeModel: REALTIME_MODEL,
+    realtimeVoice: REALTIME_VOICE
   });
+});
+
+app.post('/api/realtime/session', express.text({ type: 'application/sdp', limit: '2mb' }), async (req, res) => {
+  try {
+    if (!requireApiKey(res)) return;
+    if (!req.body) return res.status(400).json({ error: 'SDP mancante.' });
+
+    const sessionConfig = JSON.stringify({
+      type: 'realtime',
+      model: REALTIME_MODEL,
+      output_modalities: ['audio'],
+      instructions: REALTIME_INSTRUCTIONS,
+      audio: {
+        output: {
+          voice: REALTIME_VOICE
+        }
+      }
+    });
+
+    const form = new FormData();
+    form.set('sdp', req.body);
+    form.set('session', sessionConfig);
+
+    const response = await fetch('https://api.openai.com/v1/realtime/calls', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'OpenAI-Safety-Identifier': 'local-vibe-screen-reader'
+      },
+      body: form
+    });
+
+    const sdp = await response.text();
+    if (!response.ok) {
+      console.error('Errore /api/realtime/session:', response.status, sdp);
+      return res.status(response.status).json({
+        error: 'Errore durante la creazione della sessione Realtime.',
+        detail: sdp
+      });
+    }
+
+    res.type('application/sdp').send(sdp);
+  } catch (error) {
+    console.error('Errore /api/realtime/session:', error);
+    res.status(500).json({
+      error: error?.message || 'Errore durante la creazione della sessione Realtime.'
+    });
+  }
 });
 
 app.post('/api/read-screen', async (req, res) => {

@@ -2,7 +2,7 @@
 
 Mini web app locale per macOS: condividi la finestra di VS Code, selezioni un rettangolo sopra la chat Codex e l'app legge ad alta voce solo il testo nuovo utile.
 
-È un MVP: non controlla Codex, non scrive dentro VS Code e non usa microfono. Guarda il riquadro selezionato come immagine, lo manda al backend locale, il backend chiama OpenAI per estrarre/riassumere il testo e poi genera una voce naturale.
+È un MVP: non controlla Codex, non scrive dentro VS Code e non usa microfono. Il pulsante **Avvia live API** usa OpenAI Realtime via WebRTC: manda il riquadro selezionato come immagine e riceve audio live dal modello. **Leggi una volta** resta disponibile come percorso classico Vision + TTS.
 
 ## Requisiti
 
@@ -63,10 +63,12 @@ PORT=3000
 OPENAI_VISION_MODEL=gpt-4.1-mini
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_VOICE=coral
+OPENAI_REALTIME_MODEL=gpt-realtime-2.1
+OPENAI_REALTIME_VOICE=coral
 VITE_READ_INTERVAL_MS=2500
 ```
 
-La configurazione usa `coral` per una voce femminile naturale. `amber` e' una voce dell'esperienza ChatGPT, ma al momento non risulta tra le voci documentate per questa API. Se `coral` non funziona sul tuo account, prova `alloy`, `ash`, `sage`, `verse`, `marin` o `cedar`.
+La configurazione usa `coral` per una voce femminile naturale. `amber` e' una voce dell'esperienza ChatGPT, ma al momento non risulta tra le voci documentate per questa API. Per Realtime puoi provare anche `marin` o `cedar`, consigliate per qualita.
 
 Se vuoi consumare meno API, aumenta `VITE_READ_INTERVAL_MS` a `4000` o `5000`.
 
