@@ -43,6 +43,16 @@ h2 { font-size: 1rem; }
 .settings label { display: inline-flex; align-items: center; gap: .45rem; }
 .settings input[type="number"], .settings select { width: 8rem; border: 1px solid rgba(226,232,240,.18); border-radius: .65rem; padding: .45rem .55rem; background: #0f172a; color: #eef2ff; }
 .settings input[type="range"] { width: 8rem; accent-color: #7dd3fc; }
+.settings input[type="range"]:disabled { opacity: .42; }
+.rangeValue { display: inline-grid; place-items: center; min-width: 2.1rem; height: 1.65rem; padding: 0 .35rem; border-radius: .45rem; background: #1e293b; color: #bae6fd; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.settings .promptSetting { flex: 1 1 22rem; align-items: stretch; flex-direction: column; gap: .35rem; }
+.settings textarea { width: 100%; min-height: 3.1rem; resize: vertical; border: 1px solid rgba(226,232,240,.18); border-radius: .65rem; padding: .55rem .65rem; background: #0f172a; color: #eef2ff; line-height: 1.35; }
+.settings textarea::placeholder { color: #64748b; }
+.activeInstructions { flex: 1 1 100%; display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: center; gap: .45rem; min-height: 2rem; padding: .4rem .55rem; border: 1px solid rgba(125,211,252,.18); border-radius: .55rem; background: rgba(2,6,23,.42); color: #94a3b8; font-size: .8rem; line-height: 1.35; }
+.activeInstructions strong { color: #e0f2fe; white-space: nowrap; }
+.activeInstructions .activeDot { width: .5rem; height: .5rem; border-radius: 50%; background: #94a3b8; }
+.activeInstructions[data-sync="pending"] .activeDot { background: #fbbf24; }
+.activeInstructions[data-sync="synced"] .activeDot { background: #4ade80; box-shadow: 0 0 .6rem rgba(74,222,128,.55); }
 .grid { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: .75rem; }
 .panelHeader { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .6rem; }
 .panelHeader p { color: #a7b4d8; line-height: 1.4; text-align: right; }

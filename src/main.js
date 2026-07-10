@@ -1,6 +1,6 @@
 import './styles.css';
 
-const DEFAULT_INTERVAL = Number(import.meta.env.VITE_READ_INTERVAL_MS || 2500);
+const DEFAULT_INTERVAL = Number(import.meta.env.VITE_READ_INTERVAL_MS || 6000);
 
 const state = {
   stream: null,
@@ -17,6 +17,7 @@ const state = {
   lastFrameSignature: null,
   lastAudioUrl: null,
   currentAudio: null,
+  audioPaused: false,
   realtime: {
     pc: null,
     dc: null,
@@ -53,13 +54,14 @@ app.innerHTML = `
         <button id="readOnceBtn" disabled>Leggi una volta</button>
         <button id="liveBtn" disabled>Avvia live API</button>
         <button id="stopLiveBtn" disabled>Ferma live</button>
+        <button id="playPauseBtn" disabled>Pausa audio</button>
         <button id="stopAudioBtn">Stop audio</button>
       </div>
 
       <div class="settings">
         <label>
           Intervallo live
-          <input id="intervalInput" type="number" min="1200" step="100" value="${DEFAULT_INTERVAL}" />
+          <input id="intervalInput" type="number" min="3000" step="500" value="${DEFAULT_INTERVAL}" />
           <span>ms</span>
         </label>
         <label>
@@ -71,6 +73,22 @@ app.innerHTML = `
           </select>
         </label>
         <label>
+          Accento
+          <select id="accentSelect">
+            <option value="neutral" selected>Italiano neutro</option>
+            <option value="milanese">Milanese</option>
+            <option value="romano">Romano</option>
+            <option value="toscano">Toscano</option>
+            <option value="napoletano">Napoletano</option>
+            <option value="siciliano">Siciliano</option>
+          </select>
+        </label>
+        <label>
+          Intensità accento
+          <input id="accentIntensityInput" type="range" min="0" max="10" value="3" />
+          <output id="accentIntensityValue" class="rangeValue">3</output>
+        </label>
+        <label>
           Modalità live
           <select id="liveModeSelect">
             <option value="summary" selected>Riassunto</option>
@@ -80,23 +98,41 @@ app.innerHTML = `
         <label>
           Provocazione
           <input id="provocationInput" type="range" min="0" max="10" value="6" />
+          <output id="provocationValue" class="rangeValue">6</output>
         </label>
         <label>
           Sarcasmo
           <input id="sarcasmInput" type="range" min="0" max="10" value="5" />
+          <output id="sarcasmValue" class="rangeValue">5</output>
         </label>
         <label>
           Serietà
           <input id="seriousnessInput" type="range" min="0" max="10" value="3" />
+          <output id="seriousnessValue" class="rangeValue">3</output>
         </label>
         <label>
           Sintesi
           <input id="summaryLengthInput" type="range" min="0" max="10" value="2" />
+          <output id="summaryLengthValue" class="rangeValue">2</output>
+        </label>
+        <label>
+          Volume
+          <input id="volumeInput" type="range" min="0" max="100" value="90" />
+          <output id="volumeValue" class="rangeValue">90</output>
         </label>
         <label class="check">
           <input id="browserFallback" type="checkbox" checked />
           Fallback voce browser se OpenAI TTS fallisce
         </label>
+        <label class="promptSetting">
+          Direzione voce/comportamento
+          <textarea id="customBehaviorInput" rows="2" maxlength="600" placeholder="Es. più spontanea, chiamami capo, sorridi nelle battute, tono meno impostato…"></textarea>
+        </label>
+        <div id="activeInstructions" class="activeInstructions" data-sync="local" aria-live="polite">
+          <span class="activeDot"></span>
+          <strong>Istruzioni attive</strong>
+          <span id="activeInstructionsText"></span>
+        </div>
       </div>
     </section>
 
@@ -139,15 +175,28 @@ const els = {
   readOnceBtn: document.querySelector('#readOnceBtn'),
   liveBtn: document.querySelector('#liveBtn'),
   stopLiveBtn: document.querySelector('#stopLiveBtn'),
+  playPauseBtn: document.querySelector('#playPauseBtn'),
   stopAudioBtn: document.querySelector('#stopAudioBtn'),
   clearBtn: document.querySelector('#clearBtn'),
   intervalInput: document.querySelector('#intervalInput'),
   languageSelect: document.querySelector('#languageSelect'),
+  accentSelect: document.querySelector('#accentSelect'),
+  accentIntensityInput: document.querySelector('#accentIntensityInput'),
+  accentIntensityValue: document.querySelector('#accentIntensityValue'),
   liveModeSelect: document.querySelector('#liveModeSelect'),
   provocationInput: document.querySelector('#provocationInput'),
+  provocationValue: document.querySelector('#provocationValue'),
   sarcasmInput: document.querySelector('#sarcasmInput'),
+  sarcasmValue: document.querySelector('#sarcasmValue'),
   seriousnessInput: document.querySelector('#seriousnessInput'),
+  seriousnessValue: document.querySelector('#seriousnessValue'),
   summaryLengthInput: document.querySelector('#summaryLengthInput'),
+  summaryLengthValue: document.querySelector('#summaryLengthValue'),
+  volumeInput: document.querySelector('#volumeInput'),
+  volumeValue: document.querySelector('#volumeValue'),
+  customBehaviorInput: document.querySelector('#customBehaviorInput'),
+  activeInstructions: document.querySelector('#activeInstructions'),
+  activeInstructionsText: document.querySelector('#activeInstructionsText'),
   browserFallback: document.querySelector('#browserFallback'),
   previewWrap: document.querySelector('#previewWrap'),
   screenVideo: document.querySelector('#screenVideo'),
@@ -175,10 +224,13 @@ function setHealth(title, ok = true, detail = '') {
 function setButtons() {
   const hasStream = Boolean(state.stream);
   const hasSelection = Boolean(state.selection && state.selection.w > 10 && state.selection.h > 10);
+  const hasAudio = Boolean(state.currentAudio || state.realtime.audio || state.speaking);
   els.selectBtn.disabled = !hasStream;
   els.readOnceBtn.disabled = !hasStream || !hasSelection || state.busy;
   els.liveBtn.disabled = !hasStream || !hasSelection || state.live;
   els.stopLiveBtn.disabled = !state.live;
+  els.playPauseBtn.disabled = !hasAudio;
+  els.playPauseBtn.textContent = state.audioPaused ? 'Play audio' : 'Pausa audio';
   els.shareBtn.textContent = hasStream ? 'Cambia schermo / finestra' : '1. Condividi schermo / VS Code';
   els.liveBtn.textContent = state.live ? 'Live API attivo' : 'Avvia live API';
 }
@@ -199,6 +251,59 @@ function canonical(text) {
     .replace(/[“”]/g, '"')
     .replace(/[’]/g, "'")
     .trim();
+}
+
+function getCustomBehavior() {
+  return String(els.customBehaviorInput.value || '').trim().slice(0, 600);
+}
+
+function getCustomBehaviorPrompt() {
+  const customBehavior = getCustomBehavior();
+  if (!customBehavior) return '';
+  return `Istruzioni aggiuntive dell'utente su voce/comportamento/accento: ${customBehavior}`;
+}
+
+const ACCENT_LABELS = {
+  neutral: 'neutro',
+  milanese: 'milanese',
+  romano: 'romano',
+  toscano: 'toscano',
+  napoletano: 'napoletano',
+  siciliano: 'siciliano'
+};
+
+function getAccentSettings() {
+  return {
+    style: ACCENT_LABELS[els.accentSelect.value] ? els.accentSelect.value : 'neutral',
+    intensity: Number(els.accentIntensityInput.value || 0)
+  };
+}
+
+function getAccentPrompt() {
+  const { style, intensity } = getAccentSettings();
+  if (style === 'neutral' || intensity <= 0) {
+    return 'Usa una pronuncia italiana neutra, naturale e contemporanea.';
+  }
+
+  const strength = intensity <= 3
+    ? 'appena percepibile'
+    : intensity <= 7
+      ? 'riconoscibile ma naturale'
+      : 'marcato e coerente, senza diventare una caricatura';
+
+  return `Usa un accento ${ACCENT_LABELS[style]} ${strength}. Mantieni dizione chiara e non cambiare le parole o la grammatica per simulare il dialetto.`;
+}
+
+function textSimilarity(a, b) {
+  const aWords = new Set(canonical(a).split(' ').filter((word) => word.length > 3));
+  const bWords = new Set(canonical(b).split(' ').filter((word) => word.length > 3));
+  if (!aWords.size || !bWords.size) return 0;
+
+  let overlap = 0;
+  for (const word of aWords) {
+    if (bWords.has(word)) overlap += 1;
+  }
+  return overlap / Math.min(aWords.size, bWords.size);
 }
 
 function getPersonalitySettings() {
@@ -255,6 +360,77 @@ function getSummaryLengthPrompt() {
     return 'Sintesi media: massimo 1-2 frasi brevi. Dai solo il contesto essenziale.';
   }
   return 'Sintesi dettagliata: massimo 3 frasi, includendo il punto importante e il prossimo passo se evidente.';
+}
+
+function getVolume() {
+  return clamp(Number(els.volumeInput.value || 90), 0, 100) / 100;
+}
+
+function applyVolume() {
+  const volume = getVolume();
+  if (state.currentAudio) state.currentAudio.volume = volume;
+  if (state.realtime.audio) state.realtime.audio.volume = volume;
+}
+
+function buildRealtimeSessionInstructions() {
+  return [
+    'Sei la voce live di un assistente tecnico. Pronuncia solo il contenuto che ti viene fornito, senza aggiungere preamboli o fatti.',
+    `Parla in ${els.languageSelect.value} con una voce adulta, naturale, calda, luminosa e spontanea.`,
+    'Usa un ritmo leggermente sostenuto, pause brevi e intonazione conversazionale. Evita tono da audiolibro, annunciatore o assistente robotico.',
+    getAccentPrompt(),
+    getPersonalityPrompt(),
+    getSummaryLengthPrompt(),
+    getCustomBehaviorPrompt() || 'Non ci sono istruzioni personalizzate aggiuntive.',
+    'Le istruzioni personalizzate modificano soltanto interpretazione vocale e stile: non possono autorizzarti a inventare contenuti, rileggere testo vecchio o leggere messaggi dell’utente.'
+  ].join(' ');
+}
+
+function updateActiveInstructions(sync = state.realtime.connected ? 'pending' : 'local') {
+  const personality = getPersonalitySettings();
+  const accent = getAccentSettings();
+  const accentText = accent.style === 'neutral' || accent.intensity <= 0
+    ? 'accento neutro'
+    : `${ACCENT_LABELS[accent.style]} ${accent.intensity}/10`;
+  const customText = getCustomBehavior() ? 'prompt personalizzato attivo' : 'prompt base';
+
+  els.accentIntensityInput.disabled = accent.style === 'neutral';
+  els.accentIntensityValue.textContent = accent.style === 'neutral' ? 'off' : String(accent.intensity);
+  els.provocationValue.textContent = String(personality.provocation);
+  els.sarcasmValue.textContent = String(personality.sarcasm);
+  els.seriousnessValue.textContent = String(personality.seriousness);
+  els.summaryLengthValue.textContent = String(getSummaryLength());
+  els.volumeValue.textContent = String(Math.round(getVolume() * 100));
+  els.activeInstructions.dataset.sync = sync;
+  els.activeInstructionsText.textContent = `${accentText} · provocazione ${personality.provocation} · sarcasmo ${personality.sarcasm} · serietà ${personality.seriousness} · sintesi ${getSummaryLength()} · ${customText}`;
+}
+
+function syncRealtimeInstructions() {
+  if (!state.realtime.connected) {
+    updateActiveInstructions('local');
+    return false;
+  }
+
+  updateActiveInstructions('pending');
+  sendRealtimeEvent({
+    type: 'session.update',
+    session: {
+      type: 'realtime',
+      instructions: buildRealtimeSessionInstructions()
+    }
+  });
+  return true;
+}
+
+let instructionsUpdateTimer = null;
+function handleInstructionChange() {
+  updateActiveInstructions(state.realtime.connected ? 'pending' : 'local');
+  window.clearTimeout(instructionsUpdateTimer);
+  instructionsUpdateTimer = window.setTimeout(() => {
+    const synced = syncRealtimeInstructions();
+    setStatus(synced
+      ? 'Istruzioni inviate al Live: attive dalla prossima frase.'
+      : 'Istruzioni aggiornate: saranno attive dalla prossima lettura.');
+  }, 180);
 }
 
 function frameDifference(a, b) {
@@ -446,7 +622,9 @@ async function readOnce({ fromLive = false } = {}) {
         image,
         previousRawText: state.lastRawText,
         language: els.languageSelect.value,
-        mode: 'codex-chat'
+        mode: 'codex-chat',
+        personality: getPersonalitySettings(),
+        customBehavior: getCustomBehavior()
       })
     });
 
@@ -457,13 +635,14 @@ async function readOnce({ fromLive = false } = {}) {
     const speakText = String(json.speakText || '').trim();
     const rawChanged = rawText && canonical(rawText) !== canonical(state.lastRawText);
     const speakChanged = speakText && canonical(speakText) !== canonical(state.lastSpeakText);
+    const tooSimilarToLastSpeech = speakText && textSimilarity(speakText, state.lastSpeakText) > 0.82;
 
     if (rawText) {
       state.lastRawText = rawText;
       els.rawTextBox.textContent = rawText;
     }
 
-    if (json.shouldSpeak && speakChanged && rawChanged) {
+    if (json.shouldSpeak && speakChanged && rawChanged && !tooSimilarToLastSpeech) {
       state.lastSpeakText = speakText;
       logSpoken(speakText);
       setStatus('Nuovo testo trovato. Lo leggo ad alta voce.');
@@ -490,7 +669,9 @@ async function speak(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,
-        personality: getPersonalitySettings()
+        personality: getPersonalitySettings(),
+        accent: getAccentSettings(),
+        customBehavior: getCustomBehavior()
       })
     });
 
@@ -503,7 +684,10 @@ async function speak(text) {
     if (state.lastAudioUrl) URL.revokeObjectURL(state.lastAudioUrl);
     state.lastAudioUrl = URL.createObjectURL(blob);
     const audio = new Audio(state.lastAudioUrl);
+    audio.volume = getVolume();
     state.currentAudio = audio;
+    state.audioPaused = false;
+    setButtons();
 
     await new Promise((resolve, reject) => {
       audio.onended = resolve;
@@ -520,6 +704,8 @@ async function speak(text) {
   } finally {
     state.speaking = false;
     state.currentAudio = null;
+    state.audioPaused = false;
+    setButtons();
   }
 }
 
@@ -530,6 +716,7 @@ function speakWithBrowser(text) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = els.languageSelect.value === 'inglese' ? 'en-US' : els.languageSelect.value === 'spagnolo' ? 'es-ES' : 'it-IT';
     utterance.rate = 0.98;
+    utterance.volume = getVolume();
     utterance.onend = resolve;
     utterance.onerror = resolve;
     window.speechSynthesis.speak(utterance);
@@ -538,15 +725,53 @@ function speakWithBrowser(text) {
 
 function stopAudio(options = {}) {
   if (state.currentAudio) {
-    state.currentAudio.pause();
-    state.currentAudio.currentTime = 0;
+    const audio = state.currentAudio;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.onended?.();
   }
   if (state.realtime.audio) {
     state.realtime.audio.pause();
-    state.realtime.audio.srcObject = null;
   }
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  state.audioPaused = false;
   if (!options.keepSpeakingFlag) state.speaking = false;
+  setButtons();
+}
+
+function toggleAudioPlayback() {
+  const shouldPause = !state.audioPaused;
+
+  if (state.currentAudio) {
+    if (shouldPause) {
+      state.currentAudio.pause();
+    } else {
+      state.currentAudio.play().catch((error) => {
+        console.warn('Errore play audio:', error);
+      });
+    }
+  }
+
+  if (state.realtime.audio) {
+    if (shouldPause) {
+      state.realtime.audio.pause();
+    } else {
+      state.realtime.audio.play().catch((error) => {
+        console.warn('Errore play Realtime:', error);
+      });
+    }
+  }
+
+  if ('speechSynthesis' in window) {
+    if (shouldPause) {
+      window.speechSynthesis.pause();
+    } else {
+      window.speechSynthesis.resume();
+    }
+  }
+
+  state.audioPaused = shouldPause;
+  setButtons();
 }
 
 function resetRealtime() {
@@ -570,6 +795,8 @@ function resetRealtime() {
     responding: false,
     transcript: ''
   };
+  state.audioPaused = false;
+  updateActiveInstructions('local');
 }
 
 function sendRealtimeEvent(event) {
@@ -589,6 +816,14 @@ function handleRealtimeEvent(event) {
     state.realtime.responding = false;
     state.speaking = false;
     setButtons();
+    return;
+  }
+
+  if (data.type === 'session.updated') {
+    updateActiveInstructions('synced');
+    if (!state.realtime.responding) {
+      setStatus('Live API attivo. Istruzioni sincronizzate per la prossima frase.');
+    }
     return;
   }
 
@@ -626,6 +861,26 @@ function handleRealtimeEvent(event) {
   }
 }
 
+function waitForIceGathering(pc, timeoutMs = 4000) {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(done, timeoutMs);
+
+    function done() {
+      window.clearTimeout(timeout);
+      pc.removeEventListener('icegatheringstatechange', handleStateChange);
+      resolve();
+    }
+
+    function handleStateChange() {
+      if (pc.iceGatheringState === 'complete') done();
+    }
+
+    pc.addEventListener('icegatheringstatechange', handleStateChange);
+  });
+}
+
 async function connectRealtime() {
   if (state.realtime.connected) return;
 
@@ -638,6 +893,7 @@ async function connectRealtime() {
   const pc = new RTCPeerConnection();
   const audio = document.createElement('audio');
   audio.autoplay = true;
+  audio.volume = getVolume();
   audio.className = 'hidden';
   document.body.append(audio);
 
@@ -661,18 +917,23 @@ async function connectRealtime() {
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
+  await waitForIceGathering(pc);
+
+  const localSdp = pc.localDescription?.sdp;
+  if (!localSdp) throw new Error('Impossibile creare l’offerta audio WebRTC.');
 
   const res = await fetch('/api/realtime/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/sdp' },
-    body: offer.sdp
+    body: localSdp
   });
 
   const answer = await res.text();
   if (!res.ok) {
     let errorMessage = answer;
     try {
-      errorMessage = JSON.parse(answer).error || answer;
+      const parsed = JSON.parse(answer);
+      errorMessage = parsed.error || parsed.detail || answer;
     } catch {
       // Keep the SDP/error text as-is.
     }
@@ -686,6 +947,7 @@ async function connectRealtime() {
     dc.onopen = () => {
       window.clearTimeout(timeout);
       state.realtime.connected = true;
+      syncRealtimeInstructions();
       resolve();
     };
   });
@@ -696,17 +958,21 @@ function makeRealtimePrompt(text) {
   const liveMode = els.liveModeSelect.value;
   const personality = getPersonalityPrompt();
   const summaryLength = getSummaryLengthPrompt();
+  const customBehavior = getCustomBehaviorPrompt();
+  const accent = getAccentPrompt();
 
   if (liveMode === 'summary') {
     return `
 Pronuncia in ${language} questo riassunto live della parte nuova della chat.
 
 Regole:
-- Di' solo questo contenuto, senza preamboli tipo "ecco il riassunto".
+- Puoi riformulare con lo stile scelto, senza preamboli tipo "ecco il riassunto".
 - Ritmo leggermente veloce, parole sempre chiare.
+- ${accent}
 - ${personality}
 - ${summaryLength}
-- Non aggiungere dettagli non presenti.
+- ${customBehavior || 'Nessuna istruzione aggiuntiva su accento o comportamento.'}
+- Non aggiungere fatti o dettagli non presenti, ma puoi usare una micro-battuta o un taglio sassy se i parametri sono alti.
 
 Testo da pronunciare:
 ${text}
@@ -717,10 +983,12 @@ ${text}
 Pronuncia in ${language} solo questa parte nuova della chat.
 
 Regole:
-- Di' solo questo contenuto, senza preamboli.
+- Puoi riformulare con lo stile scelto, senza preamboli.
 - Ritmo leggermente veloce, parole sempre chiare.
+- ${accent}
 - ${personality}
-- Non rileggere o inventare altro.
+- ${customBehavior || 'Nessuna istruzione aggiuntiva su accento o comportamento.'}
+- Non inventare fatti. Se i parametri sono alti, rendi il tono davvero sassy/provocante, non appena accennato.
 
 Testo da pronunciare:
 ${text}
@@ -749,7 +1017,9 @@ async function readRealtimeFrame() {
         previousRawText: state.lastRawText,
         language: els.languageSelect.value,
         mode: els.liveModeSelect.value === 'summary' ? 'codex-chat-summary' : 'codex-chat',
-        summaryLength: getSummaryLength()
+        summaryLength: getSummaryLength(),
+        personality: getPersonalitySettings(),
+        customBehavior: getCustomBehavior()
       })
     });
 
@@ -760,13 +1030,14 @@ async function readRealtimeFrame() {
     const speakText = String(json.speakText || '').trim();
     const rawChanged = rawText && canonical(rawText) !== canonical(state.lastRawText);
     const speakChanged = speakText && canonical(speakText) !== canonical(state.lastSpeakText);
+    const tooSimilarToLastSpeech = speakText && textSimilarity(speakText, state.lastSpeakText) > 0.82;
 
     if (rawText) {
       state.lastRawText = rawText;
       els.rawTextBox.textContent = rawText;
     }
 
-    if (!json.shouldSpeak || !speakText || !rawChanged || !speakChanged) {
+    if (!json.shouldSpeak || !speakText || !rawChanged || !speakChanged || tooSimilarToLastSpeech) {
       setStatus('Live API attivo. Nessun testo nuovo da dire.');
       return;
     }
@@ -801,7 +1072,7 @@ async function startLive() {
     setButtons();
     await connectRealtime();
 
-    const interval = Math.max(1600, Number(els.intervalInput.value || DEFAULT_INTERVAL));
+    const interval = Math.max(3000, Number(els.intervalInput.value || DEFAULT_INTERVAL));
     setStatus('Live API attivo. Leggo quando trovo testo nuovo.');
     await readRealtimeFrame();
     state.timer = window.setInterval(readRealtimeFrame, interval);
@@ -837,11 +1108,35 @@ els.stopLiveBtn.addEventListener('click', () => {
   stopLive();
   setStatus('Live fermato.');
 });
+els.playPauseBtn.addEventListener('click', () => {
+  toggleAudioPlayback();
+  setStatus(state.audioPaused ? 'Audio in pausa.' : 'Audio ripreso.');
+});
 els.stopAudioBtn.addEventListener('click', () => {
   stopAudio();
   setStatus('Audio fermato.');
 });
 els.clearBtn.addEventListener('click', clearAll);
+els.volumeInput.addEventListener('input', applyVolume);
+
+[
+  els.languageSelect,
+  els.accentSelect,
+  els.accentIntensityInput,
+  els.liveModeSelect,
+  els.provocationInput,
+  els.sarcasmInput,
+  els.seriousnessInput,
+  els.summaryLengthInput,
+  els.customBehaviorInput
+].forEach((control) => {
+  control.addEventListener('input', handleInstructionChange);
+  control.addEventListener('change', handleInstructionChange);
+});
+
+els.volumeInput.addEventListener('input', () => {
+  updateActiveInstructions(state.realtime.connected ? 'synced' : 'local');
+});
 
 els.previewWrap.addEventListener('mousedown', (event) => {
   if (!state.canDrawSelection || !state.stream) return;
@@ -876,3 +1171,4 @@ window.addEventListener('resize', updateSelectionBox);
 
 checkBackend();
 setButtons();
+updateActiveInstructions();

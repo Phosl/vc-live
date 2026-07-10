@@ -1,0 +1,8 @@
+{
+  "workbench.colorTheme": "Dark 2026",
+  "workbench.colorCustomizations": {
+    "titleBar.activeBackground": "#310a1c",
+    "titleBar.activeForeground": "#a87a85",
+    "commandCenter.foreground": "#a87a85"
+  }
+}
