@@ -14,6 +14,7 @@ const state = {
   timer: null,
   lastRawText: '',
   lastSpeakText: '',
+  spokenHistory: [],
   lastFrameSignature: null,
   lastAudioUrl: null,
   currentAudio: null,
@@ -24,7 +25,8 @@ const state = {
     audio: null,
     connected: false,
     responding: false,
-    transcript: ''
+    transcript: '',
+    isVoiceTest: false
   }
 };
 
@@ -54,6 +56,7 @@ app.innerHTML = `
         <button id="readOnceBtn" disabled>Leggi una volta</button>
         <button id="liveBtn" disabled>Avvia live API</button>
         <button id="stopLiveBtn" disabled>Ferma live</button>
+        <button id="testVoiceBtn">Testa voce</button>
         <button id="playPauseBtn" disabled>Pausa audio</button>
         <button id="stopAudioBtn">Stop audio</button>
       </div>
@@ -85,8 +88,8 @@ app.innerHTML = `
         </label>
         <label>
           Intensità accento
-          <input id="accentIntensityInput" type="range" min="0" max="10" value="3" />
-          <output id="accentIntensityValue" class="rangeValue">3</output>
+          <input id="accentIntensityInput" type="range" min="0" max="10" value="7" />
+          <output id="accentIntensityValue" class="rangeValue">7</output>
         </label>
         <label>
           Modalità live
@@ -97,23 +100,23 @@ app.innerHTML = `
         </label>
         <label>
           Provocazione
-          <input id="provocationInput" type="range" min="0" max="10" value="6" />
-          <output id="provocationValue" class="rangeValue">6</output>
+          <input id="provocationInput" type="range" min="0" max="10" value="8" />
+          <output id="provocationValue" class="rangeValue">8</output>
         </label>
         <label>
           Sarcasmo
-          <input id="sarcasmInput" type="range" min="0" max="10" value="5" />
-          <output id="sarcasmValue" class="rangeValue">5</output>
+          <input id="sarcasmInput" type="range" min="0" max="10" value="8" />
+          <output id="sarcasmValue" class="rangeValue">8</output>
         </label>
         <label>
           Serietà
-          <input id="seriousnessInput" type="range" min="0" max="10" value="3" />
-          <output id="seriousnessValue" class="rangeValue">3</output>
+          <input id="seriousnessInput" type="range" min="0" max="10" value="2" />
+          <output id="seriousnessValue" class="rangeValue">2</output>
         </label>
         <label>
           Sintesi
-          <input id="summaryLengthInput" type="range" min="0" max="10" value="2" />
-          <output id="summaryLengthValue" class="rangeValue">2</output>
+          <input id="summaryLengthInput" type="range" min="0" max="10" value="8" />
+          <output id="summaryLengthValue" class="rangeValue">8</output>
         </label>
         <label>
           Volume
@@ -175,6 +178,7 @@ const els = {
   readOnceBtn: document.querySelector('#readOnceBtn'),
   liveBtn: document.querySelector('#liveBtn'),
   stopLiveBtn: document.querySelector('#stopLiveBtn'),
+  testVoiceBtn: document.querySelector('#testVoiceBtn'),
   playPauseBtn: document.querySelector('#playPauseBtn'),
   stopAudioBtn: document.querySelector('#stopAudioBtn'),
   clearBtn: document.querySelector('#clearBtn'),
@@ -229,6 +233,7 @@ function setButtons() {
   els.readOnceBtn.disabled = !hasStream || !hasSelection || state.busy;
   els.liveBtn.disabled = !hasStream || !hasSelection || state.live;
   els.stopLiveBtn.disabled = !state.live;
+  els.testVoiceBtn.disabled = state.speaking || state.realtime.responding;
   els.playPauseBtn.disabled = !hasAudio;
   els.playPauseBtn.textContent = state.audioPaused ? 'Play audio' : 'Pausa audio';
   els.shareBtn.textContent = hasStream ? 'Cambia schermo / finestra' : '1. Condividi schermo / VS Code';
@@ -272,6 +277,14 @@ const ACCENT_LABELS = {
   siciliano: 'siciliano'
 };
 
+const ACCENT_IDENTITIES = {
+  milanese: 'Sei una speaker italiana adulta cresciuta a Milano e il tuo modo spontaneo di parlare conserva una cadenza milanese autentica.',
+  romano: 'Sei una speaker italiana adulta cresciuta a Roma e il tuo modo spontaneo di parlare conserva una cadenza romana autentica.',
+  toscano: 'Sei una speaker italiana adulta cresciuta in Toscana e il tuo modo spontaneo di parlare conserva una cadenza toscana autentica.',
+  napoletano: 'Sei una speaker italiana adulta cresciuta a Napoli e il tuo modo spontaneo di parlare conserva una cadenza napoletana autentica.',
+  siciliano: 'Sei una speaker italiana adulta cresciuta in Sicilia e il tuo modo spontaneo di parlare conserva una cadenza siciliana autentica.'
+};
+
 function getAccentSettings() {
   return {
     style: ACCENT_LABELS[els.accentSelect.value] ? els.accentSelect.value : 'neutral',
@@ -285,18 +298,24 @@ function getAccentPrompt() {
     return 'Usa una pronuncia italiana neutra, naturale e contemporanea.';
   }
 
-  const strength = intensity <= 3
-    ? 'appena percepibile'
-    : intensity <= 7
-      ? 'riconoscibile ma naturale'
-      : 'marcato e coerente, senza diventare una caricatura';
+  if (intensity <= 3) {
+    return `${ACCENT_IDENTITIES[style]} L'inflessione deve essere lieve ma percepibile. Mantieni dizione chiara e italiano standard.`;
+  }
 
-  return `Usa un accento ${ACCENT_LABELS[style]} ${strength}. Mantieni dizione chiara e non cambiare le parole o la grammatica per simulare il dialetto.`;
+  if (intensity <= 6) {
+    return `${ACCENT_IDENTITIES[style]} L'identità regionale deve essere chiaramente riconoscibile nella cadenza, nell'intonazione e nelle vocali fin dalle prime parole. Usa italiano standard e resta naturale.`;
+  }
+
+  return `# IDENTITÀ VOCALE REGIONALE OBBLIGATORIA: ${ACCENT_IDENTITIES[style]} NON passare a una pronuncia italiana neutra. L'accento ${ACCENT_LABELS[style]} deve essere forte, evidente e coerente dalla prima parola attraverso cadenza, melodia, vocali e consonanti. Usa però lessico e grammatica in italiano standard, senza caricature.`;
 }
 
 function textSimilarity(a, b) {
-  const aWords = new Set(canonical(a).split(' ').filter((word) => word.length > 3));
-  const bWords = new Set(canonical(b).split(' ').filter((word) => word.length > 3));
+  const tokenize = (text) => canonical(text)
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .split(' ')
+    .filter((word) => word.length > 3);
+  const aWords = new Set(tokenize(a));
+  const bWords = new Set(tokenize(b));
   if (!aWords.size || !bWords.size) return 0;
 
   let overlap = 0;
@@ -304,6 +323,33 @@ function textSimilarity(a, b) {
     if (bWords.has(word)) overlap += 1;
   }
   return overlap / Math.min(aWords.size, bWords.size);
+}
+
+function isRepeatedSpeech(text) {
+  const normalized = canonical(text);
+  if (!normalized) return false;
+
+  return state.spokenHistory.some((previous) => {
+    const normalizedPrevious = canonical(previous);
+    if (normalized === normalizedPrevious) return true;
+
+    const shortestLength = Math.min(normalized.length, normalizedPrevious.length);
+    if (shortestLength >= 28 && (
+      normalized.includes(normalizedPrevious) || normalizedPrevious.includes(normalized)
+    )) return true;
+
+    return textSimilarity(normalized, normalizedPrevious) >= 0.7;
+  });
+}
+
+function rememberSpoken(text) {
+  const cleanText = String(text || '').trim();
+  if (!cleanText) return;
+  state.lastSpeakText = cleanText;
+  state.spokenHistory = [
+    ...state.spokenHistory.filter((item) => canonical(item) !== canonical(cleanText)),
+    cleanText
+  ].slice(-10);
 }
 
 function getPersonalitySettings() {
@@ -318,24 +364,28 @@ function getPersonalityPrompt() {
   const { provocation, sarcasm, seriousness } = getPersonalitySettings();
   const tone = [];
 
-  if (provocation <= 3) {
+  if (provocation <= 2) {
     tone.push('Provocazione bassa: tono dolce, professionale e amichevole.');
+  } else if (provocation <= 5) {
+    tone.push('Provocazione media: tono caldo, complice e leggermente malizioso.');
   } else if (provocation <= 7) {
-    tone.push('Provocazione media: tono caldo, complice, flirtante e un po malizioso.');
+    tone.push('Provocazione alta: usa un tono chiaramente teasing, audace e complice in ogni frase non puramente tecnica.');
   } else {
-    tone.push('Provocazione alta: tono molto audace, teasing, malizioso e provocante in modo elegante. Usa energia da partner che stuzzica mentre aiuta. Mai esplicita.');
+    tone.push(`PROVOCAZIONE ${provocation}/10 OBBLIGATORIA: ogni riassunto non banale deve avere una formulazione audace, teasing e maliziosa, come una partner tecnica che stuzzica mentre aiuta. Deve sentirsi subito, non essere solo suggerita. Mai esplicita.`);
   }
 
-  if (sarcasm <= 3) {
+  if (sarcasm <= 2) {
     tone.push('Sarcasmo basso: niente battute taglienti, resta morbida.');
-  } else if (sarcasm <= 7) {
+  } else if (sarcasm <= 5) {
     tone.push('Sarcasmo medio: usa commenti ironici brevi e micro-battute quando naturale.');
+  } else if (sarcasm <= 7) {
+    tone.push('Sarcasmo alto: inserisci regolarmente una svolta ironica breve, secca e chiaramente percepibile.');
   } else {
-    tone.push('Sarcasmo alto: sii sassy, pungente e ironica. Puoi fare battute secche sul casino del codice, ma senza essere cattiva o distraente.');
+    tone.push(`SARCASMO ${sarcasm}/10 OBBLIGATORIO: in ogni riassunto non banale inserisci una micro-battuta secca o una chiusura ironica e pungente. Sii sassy senza essere cattiva. Non omettere il sarcasmo solo perché la risposta è corta.`);
   }
 
   if (seriousness <= 3) {
-    tone.push('Serieta bassa: piu giocosa, espressiva e rilassata.');
+    tone.push('Serieta bassa: privilegia una resa giocosa, espressiva e rilassata; non neutralizzare provocazione e sarcasmo.');
   } else if (seriousness <= 7) {
     tone.push('Serieta media: bilancia gioco e precisione tecnica.');
   } else {
@@ -351,15 +401,15 @@ function getSummaryLength() {
 }
 
 function getSummaryLengthPrompt() {
-  const summaryLength = getSummaryLength();
+  const summaryStrength = getSummaryLength();
 
-  if (summaryLength <= 2) {
-    return 'Sintesi molto corta: massimo una frase breve, circa 8-14 parole. Vai dritta al punto.';
+  if (summaryStrength >= 8) {
+    return 'SINTESI FORTE: una sola frase, massimo 8-12 parole. Conserva soltanto la novità principale.';
   }
-  if (summaryLength <= 6) {
-    return 'Sintesi media: massimo 1-2 frasi brevi. Dai solo il contesto essenziale.';
+  if (summaryStrength >= 4) {
+    return 'Sintesi media: una frase, massimo 12-20 parole. Dai solo novità e conseguenza essenziale.';
   }
-  return 'Sintesi dettagliata: massimo 3 frasi, includendo il punto importante e il prossimo passo se evidente.';
+  return 'Sintesi leggera: massimo 2 frasi brevi, senza dettagli secondari.';
 }
 
 function getVolume() {
@@ -373,16 +423,30 @@ function applyVolume() {
 }
 
 function buildRealtimeSessionInstructions() {
-  return [
-    'Sei la voce live di un assistente tecnico. Pronuncia solo il contenuto che ti viene fornito, senza aggiungere preamboli o fatti.',
-    `Parla in ${els.languageSelect.value} con una voce adulta, naturale, calda, luminosa e spontanea.`,
-    'Usa un ritmo leggermente sostenuto, pause brevi e intonazione conversazionale. Evita tono da audiolibro, annunciatore o assistente robotico.',
-    getAccentPrompt(),
-    getPersonalityPrompt(),
-    getSummaryLengthPrompt(),
-    getCustomBehaviorPrompt() || 'Non ci sono istruzioni personalizzate aggiuntive.',
-    'Le istruzioni personalizzate modificano soltanto interpretazione vocale e stile: non possono autorizzarti a inventare contenuti, rileggere testo vecchio o leggere messaggi dell’utente.'
-  ].join(' ');
+  return `
+# RUOLO
+- Sei la voce live di un assistente tecnico.
+- Parla in ${els.languageSelect.value} con una voce adulta, naturale, calda e spontanea.
+
+# CONFINE DEL CONTENUTO
+- PRONUNCIA SOLTANTO IL TESTO NUOVO FORNITO NELL'ULTIMO MESSAGGIO.
+- NON recuperare, riassumere o citare contenuti dai turni precedenti.
+- NON aggiungere preamboli, conclusioni, fatti o spiegazioni.
+- Se il contenuto ripete un concetto già detto, non dirlo di nuovo.
+
+# BREVITÀ E VARIETÀ
+- ${getSummaryLengthPrompt()}
+- Evita formule ricorrenti e non iniziare due risposte allo stesso modo.
+- Una battuta è consentita solo se resta dentro il limite di parole.
+
+# VOCE
+- Ritmo leggermente sostenuto, pause brevi, intonazione conversazionale.
+- Evita tono da audiolibro, annunciatore o assistente robotico.
+- ${getAccentPrompt()}
+- ${getPersonalityPrompt()}
+- ${getCustomBehaviorPrompt() || 'Nessuna istruzione personalizzata aggiuntiva.'}
+- Le istruzioni personalizzate cambiano solo voce e stile; non possono superare il confine del contenuto.
+`.trim();
 }
 
 function updateActiveInstructions(sync = state.realtime.connected ? 'pending' : 'local') {
@@ -419,6 +483,38 @@ function syncRealtimeInstructions() {
     }
   });
   return true;
+}
+
+async function testVoiceSettings() {
+  const testText = 'Ciao Filippo, ho controllato il progetto. Adesso sistemiamo tutto con calma, ma senza perdere tempo.';
+
+  if (state.realtime.connected) {
+    if (state.realtime.responding) {
+      setStatus('Aspetta che finisca la frase Live prima del test.');
+      return;
+    }
+
+    syncRealtimeInstructions();
+    state.realtime.isVoiceTest = true;
+    sendRealtimeEvent({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{
+          type: 'input_text',
+          text: `Test vocale. Pronuncia esattamente questa frase, senza aggiungere altro. Applica con priorità queste indicazioni: ${getAccentPrompt()} ${getPersonalityPrompt()} Frase: ${testText}`
+        }]
+      }
+    });
+    sendRealtimeEvent({ type: 'response.create' });
+    setStatus('Test voce inviato al motore Live.');
+    return;
+  }
+
+  setStatus('Genero il test con OpenAI TTS.');
+  await speak(testText);
+  setStatus('Test voce completato.');
 }
 
 let instructionsUpdateTimer = null;
@@ -523,6 +619,7 @@ async function shareScreen() {
     state.selection = null;
     state.lastRawText = '';
     state.lastSpeakText = '';
+    state.spokenHistory = [];
     state.lastFrameSignature = null;
     els.rawTextBox.textContent = 'Ancora nulla.';
 
@@ -624,6 +721,7 @@ async function readOnce({ fromLive = false } = {}) {
         language: els.languageSelect.value,
         mode: 'codex-chat',
         personality: getPersonalitySettings(),
+        recentSpokenTexts: state.spokenHistory.slice(-8),
         customBehavior: getCustomBehavior()
       })
     });
@@ -635,15 +733,15 @@ async function readOnce({ fromLive = false } = {}) {
     const speakText = String(json.speakText || '').trim();
     const rawChanged = rawText && canonical(rawText) !== canonical(state.lastRawText);
     const speakChanged = speakText && canonical(speakText) !== canonical(state.lastSpeakText);
-    const tooSimilarToLastSpeech = speakText && textSimilarity(speakText, state.lastSpeakText) > 0.82;
+    const repeatedSpeech = speakText && isRepeatedSpeech(speakText);
 
     if (rawText) {
       state.lastRawText = rawText;
       els.rawTextBox.textContent = rawText;
     }
 
-    if (json.shouldSpeak && speakChanged && rawChanged && !tooSimilarToLastSpeech) {
-      state.lastSpeakText = speakText;
+    if (json.shouldSpeak && speakChanged && rawChanged && !repeatedSpeech) {
+      rememberSpoken(speakText);
       logSpoken(speakText);
       setStatus('Nuovo testo trovato. Lo leggo ad alta voce.');
       await speak(speakText);
@@ -793,7 +891,8 @@ function resetRealtime() {
     audio: null,
     connected: false,
     responding: false,
-    transcript: ''
+    transcript: '',
+    isVoiceTest: false
   };
   state.audioPaused = false;
   updateActiveInstructions('local');
@@ -815,6 +914,7 @@ function handleRealtimeEvent(event) {
     setStatus(data.error?.message || 'Errore Realtime.', 'error');
     state.realtime.responding = false;
     state.speaking = false;
+    state.realtime.isVoiceTest = false;
     setButtons();
     return;
   }
@@ -849,11 +949,12 @@ function handleRealtimeEvent(event) {
 
   if (data.type === 'response.done') {
     const spokenText = state.realtime.transcript.trim();
-    if (spokenText && !/^nessun nuovo testo\.?$/i.test(spokenText)) {
-      state.lastSpeakText = spokenText;
+    if (spokenText && !state.realtime.isVoiceTest && !/^nessun nuovo testo\.?$/i.test(spokenText)) {
+      rememberSpoken(spokenText);
       logSpoken(spokenText);
       els.rawTextBox.textContent = spokenText;
     }
+    state.realtime.isVoiceTest = false;
     state.realtime.responding = false;
     state.speaking = false;
     setStatus(state.live ? 'Live API attivo. Aspetto nuovo testo nello screenshot.' : 'Live API pronto.');
@@ -963,26 +1064,32 @@ function makeRealtimePrompt(text) {
 
   if (liveMode === 'summary') {
     return `
-Pronuncia in ${language} questo riassunto live della parte nuova della chat.
+# OBIETTIVO
+Pronuncia in ${language} esclusivamente la novità qui sotto.
 
-Regole:
-- Puoi riformulare con lo stile scelto, senza preamboli tipo "ecco il riassunto".
+# REGOLE OBBLIGATORIE
+- USA SOLTANTO IL CONTENUTO TRA I MARCATORI NUOVO_CONTENUTO.
+- Ignora completamente la cronologia della conversazione.
+- Non ripetere concetti già pronunciati e non aggiungere preamboli.
 - Ritmo leggermente veloce, parole sempre chiare.
 - ${accent}
 - ${personality}
 - ${summaryLength}
 - ${customBehavior || 'Nessuna istruzione aggiuntiva su accento o comportamento.'}
-- Non aggiungere fatti o dettagli non presenti, ma puoi usare una micro-battuta o un taglio sassy se i parametri sono alti.
+- Non aggiungere fatti o dettagli. Una micro-battuta è ammessa solo dentro il limite di parole.
 
-Testo da pronunciare:
+NUOVO_CONTENUTO_INIZIO
 ${text}
+NUOVO_CONTENUTO_FINE
 `.trim();
   }
 
   return `
 Pronuncia in ${language} solo questa parte nuova della chat.
 
-Regole:
+Regole obbligatorie:
+- USA SOLTANTO IL TESTO TRA I MARCATORI NUOVO_CONTENUTO.
+- Ignora completamente la cronologia e non ripetere concetti già pronunciati.
 - Puoi riformulare con lo stile scelto, senza preamboli.
 - Ritmo leggermente veloce, parole sempre chiare.
 - ${accent}
@@ -990,8 +1097,9 @@ Regole:
 - ${customBehavior || 'Nessuna istruzione aggiuntiva su accento o comportamento.'}
 - Non inventare fatti. Se i parametri sono alti, rendi il tono davvero sassy/provocante, non appena accennato.
 
-Testo da pronunciare:
+NUOVO_CONTENUTO_INIZIO
 ${text}
+NUOVO_CONTENUTO_FINE
 `.trim();
 }
 
@@ -1019,6 +1127,7 @@ async function readRealtimeFrame() {
         mode: els.liveModeSelect.value === 'summary' ? 'codex-chat-summary' : 'codex-chat',
         summaryLength: getSummaryLength(),
         personality: getPersonalitySettings(),
+        recentSpokenTexts: state.spokenHistory.slice(-8),
         customBehavior: getCustomBehavior()
       })
     });
@@ -1030,19 +1139,20 @@ async function readRealtimeFrame() {
     const speakText = String(json.speakText || '').trim();
     const rawChanged = rawText && canonical(rawText) !== canonical(state.lastRawText);
     const speakChanged = speakText && canonical(speakText) !== canonical(state.lastSpeakText);
-    const tooSimilarToLastSpeech = speakText && textSimilarity(speakText, state.lastSpeakText) > 0.82;
+    const repeatedSpeech = speakText && isRepeatedSpeech(speakText);
 
     if (rawText) {
       state.lastRawText = rawText;
       els.rawTextBox.textContent = rawText;
     }
 
-    if (!json.shouldSpeak || !speakText || !rawChanged || !speakChanged || tooSimilarToLastSpeech) {
+    if (!json.shouldSpeak || !speakText || !rawChanged || !speakChanged || repeatedSpeech) {
       setStatus('Live API attivo. Nessun testo nuovo da dire.');
       return;
     }
 
-    state.lastSpeakText = speakText;
+    rememberSpoken(speakText);
+    state.realtime.isVoiceTest = false;
     sendRealtimeEvent({
       type: 'conversation.item.create',
       item: {
@@ -1094,6 +1204,7 @@ function stopLive() {
 function clearAll() {
   state.lastRawText = '';
   state.lastSpeakText = '';
+  state.spokenHistory = [];
   state.lastFrameSignature = null;
   els.rawTextBox.textContent = 'Ancora nulla.';
   els.spokenLog.innerHTML = '';
@@ -1107,6 +1218,12 @@ els.liveBtn.addEventListener('click', startLive);
 els.stopLiveBtn.addEventListener('click', () => {
   stopLive();
   setStatus('Live fermato.');
+});
+els.testVoiceBtn.addEventListener('click', () => {
+  testVoiceSettings().catch((error) => {
+    console.error(error);
+    setStatus(error.message || 'Errore durante il test voce.', 'error');
+  });
 });
 els.playPauseBtn.addEventListener('click', () => {
   toggleAudioPlayback();
