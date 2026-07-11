@@ -160,6 +160,14 @@ app.innerHTML = `
           </select>
         </label>
         <label>
+          Voce
+          <select id="voiceProfileSelect">
+            <option value="female" selected>Femminile · marin</option>
+            <option value="male">Maschile · cedar</option>
+            <option value="neutral">Neutra · alloy</option>
+          </select>
+        </label>
+        <label>
           Accento
           <select id="accentSelect">
             <option value="neutral" selected>Italiano neutro</option>
@@ -319,6 +327,7 @@ const els = {
   modelProfileSelect: document.querySelector('#modelProfileSelect'),
   modelPriceHint: document.querySelector('#modelPriceHint'),
   languageSelect: document.querySelector('#languageSelect'),
+  voiceProfileSelect: document.querySelector('#voiceProfileSelect'),
   accentSelect: document.querySelector('#accentSelect'),
   accentIntensityInput: document.querySelector('#accentIntensityInput'),
   accentIntensityValue: document.querySelector('#accentIntensityValue'),
@@ -522,6 +531,8 @@ function setButtons() {
   els.sarcasmInput.disabled = state.wolfMode
   els.seriousnessInput.disabled = state.wolfMode
   els.summaryLengthInput.disabled = state.wolfMode
+  els.liveModeSelect.disabled = state.wolfMode
+  els.voiceProfileSelect.disabled = state.live
   els.magneticModeToggle.checked = state.magneticMode
   els.wolfModeToggle.checked = state.wolfMode
 }
@@ -564,6 +575,15 @@ function getCustomBehavior() {
     .slice(0, 600)
 }
 
+function getVoiceProfile() {
+  const profiles = {
+    female: {label: 'femminile', voice: 'marin'},
+    male: {label: 'maschile', voice: 'cedar'},
+    neutral: {label: 'neutra', voice: 'alloy'},
+  }
+  return profiles[els.voiceProfileSelect.value] || profiles.female
+}
+
 function readPersonalityPresets() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PERSONALITY_STORAGE_KEY) || '[]')
@@ -596,6 +616,7 @@ function renderPersonalityPresets(selectedId = '') {
 function capturePersonalitySettings() {
   return {
     language: els.languageSelect.value,
+    voiceProfile: els.voiceProfileSelect.value,
     accent: els.accentSelect.value,
     accentIntensity: Number(els.accentIntensityInput.value),
     provocation: Number(els.provocationInput.value),
@@ -613,6 +634,7 @@ function setSelectValue(select, value, fallback) {
 function applyPersonalityPreset(preset) {
   const settings = preset.settings || {}
   setSelectValue(els.languageSelect, settings.language, 'italiano')
+  setSelectValue(els.voiceProfileSelect, settings.voiceProfile, 'female')
   setSelectValue(els.accentSelect, settings.accent, 'neutral')
   els.accentIntensityInput.value = String(clamp(Number(settings.accentIntensity) || 0, 0, 10))
   els.provocationInput.value = String(clamp(Number(settings.provocation) || 0, 0, 10))
@@ -919,7 +941,7 @@ function buildRealtimeSessionInstructions() {
 - Non usare un appellativo in turni consecutivi. La seduzione deve emergere soprattutto da voce, ritmo e intonazione, non da nomignoli.
 
 # BREVITÀ E VARIETÀ
-- ${getSummaryLengthPrompt()}
+- ${state.wolfMode ? 'MODALITÀ WOLF: non sintetizzare e non condensare. Pronuncia integralmente il nuovo contenuto significativo.' : getSummaryLengthPrompt()}
 - Evita formule ricorrenti e non iniziare due risposte allo stesso modo.
 - Una battuta è consentita solo se resta dentro il limite di parole.
 
@@ -948,6 +970,7 @@ function updateActiveInstructions(sync = state.realtime.connected ? 'pending' : 
     : getCustomBehavior()
       ? 'prompt personalizzato attivo'
       : 'prompt base'
+  const readingText = state.wolfMode ? 'lettura integrale' : `sintesi ${getSummaryLength()}`
 
   els.accentIntensityInput.disabled = accent.style === 'neutral'
   els.accentIntensityValue.textContent =
@@ -958,7 +981,7 @@ function updateActiveInstructions(sync = state.realtime.connected ? 'pending' : 
   els.summaryLengthValue.textContent = String(getSummaryLength())
   els.volumeValue.textContent = String(Math.round(getVolume() * 100))
   els.activeInstructions.dataset.sync = sync
-  els.activeInstructionsText.textContent = `${getModelProfile().label} · ${accentText} · seduzione ${personality.provocation} · sarcasmo ${personality.sarcasm} · serietà ${personality.seriousness} · sintesi ${getSummaryLength()} · ${customText}`
+  els.activeInstructionsText.textContent = `${getModelProfile().label} · voce ${getVoiceProfile().label} · ${accentText} · seduzione ${personality.provocation} · sarcasmo ${personality.sarcasm} · serietà ${personality.seriousness} · ${readingText} · ${customText}`
 }
 
 function syncRealtimeInstructions() {
@@ -986,6 +1009,9 @@ function syncRealtimeInstructions() {
 async function testVoiceSettings() {
   const testText =
     'Ciao Filippo. Ho controllato il progetto: il codice ora è pulito, preciso e pronto. Possiamo continuare senza perdere tempo.'
+  const testPrompt = state.wolfMode
+    ? `Test voce Wolf. Pronuncia integralmente e senza riformulare questo testo, applicando il profilo Wolf soltanto alla resa vocale: ${testText}`
+    : `Test completo di voce e personalità. Comunica questi fatti in massimo due frasi, riformulandoli liberamente per rendere MOLTO evidente lo stile selezionato. Non inventare altri fatti. Indicazioni obbligatorie: ${getAccentPrompt()} ${getPersonalityPrompt()} ${getCustomBehaviorPrompt()} Fatti da comunicare: ${testText}`
 
   if (state.realtime.connected) {
     if (state.realtime.responding) {
@@ -1003,7 +1029,7 @@ async function testVoiceSettings() {
         content: [
           {
             type: 'input_text',
-            text: `Test completo di voce e personalità. Comunica questi fatti in massimo due frasi, riformulandoli liberamente per rendere MOLTO evidente lo stile selezionato. Non inventare altri fatti. Indicazioni obbligatorie: ${getAccentPrompt()} ${getPersonalityPrompt()} ${getCustomBehaviorPrompt()} Fatti da comunicare: ${testText}`,
+            text: testPrompt,
           },
         ],
       },
@@ -1031,6 +1057,8 @@ async function toggleMagneticMode() {
       els.sarcasmInput.value = wolfRestore.sarcasm || '8'
       els.seriousnessInput.value = wolfRestore.seriousness || '2'
       els.summaryLengthInput.value = wolfRestore.summaryLength || '8'
+      els.liveModeSelect.value = wolfRestore.liveMode || 'summary'
+      els.voiceProfileSelect.value = wolfRestore.voiceProfile || 'female'
       state.wolfRestore = null
     }
     state.magneticRestore = {
@@ -1038,12 +1066,14 @@ async function toggleMagneticMode() {
       provocation: els.provocationInput.value,
       sarcasm: els.sarcasmInput.value,
       seriousness: els.seriousnessInput.value,
+      voiceProfile: els.voiceProfileSelect.value,
     }
     state.magneticMode = true
     els.modelProfileSelect.value = 'quality'
     els.provocationInput.value = '10'
     els.sarcasmInput.value = '2'
     els.seriousnessInput.value = '0'
+    els.voiceProfileSelect.value = 'female'
   } else {
     const restore = state.magneticRestore || {}
     state.magneticMode = false
@@ -1051,6 +1081,7 @@ async function toggleMagneticMode() {
     els.provocationInput.value = restore.provocation || '10'
     els.sarcasmInput.value = restore.sarcasm || '8'
     els.seriousnessInput.value = restore.seriousness || '2'
+    els.voiceProfileSelect.value = restore.voiceProfile || 'female'
     state.magneticRestore = null
   }
 
@@ -1079,6 +1110,7 @@ async function toggleWolfMode() {
       els.provocationInput.value = magneticRestore.provocation || '10'
       els.sarcasmInput.value = magneticRestore.sarcasm || '8'
       els.seriousnessInput.value = magneticRestore.seriousness || '2'
+      els.voiceProfileSelect.value = magneticRestore.voiceProfile || 'female'
       state.magneticRestore = null
     }
     state.wolfRestore = {
@@ -1087,13 +1119,17 @@ async function toggleWolfMode() {
       sarcasm: els.sarcasmInput.value,
       seriousness: els.seriousnessInput.value,
       summaryLength: els.summaryLengthInput.value,
+      liveMode: els.liveModeSelect.value,
+      voiceProfile: els.voiceProfileSelect.value,
     }
     state.wolfMode = true
     els.modelProfileSelect.value = 'quality'
     els.provocationInput.value = '0'
     els.sarcasmInput.value = '2'
     els.seriousnessInput.value = '10'
-    els.summaryLengthInput.value = '8'
+    els.summaryLengthInput.value = '0'
+    els.liveModeSelect.value = 'read'
+    els.voiceProfileSelect.value = 'male'
   } else {
     const restore = state.wolfRestore || {}
     state.wolfMode = false
@@ -1102,6 +1138,8 @@ async function toggleWolfMode() {
     els.sarcasmInput.value = restore.sarcasm || '8'
     els.seriousnessInput.value = restore.seriousness || '2'
     els.summaryLengthInput.value = restore.summaryLength || '8'
+    els.liveModeSelect.value = restore.liveMode || 'summary'
+    els.voiceProfileSelect.value = restore.voiceProfile || 'female'
     state.wolfRestore = null
   }
 
@@ -1195,7 +1233,7 @@ async function checkBackend() {
       setHealth(
         'Live pronto',
         true,
-        `${profile.label} · ${profile.realtimeModel} · voce ${json.realtimeVoice || json.ttsVoice}`,
+        `${profile.label} · ${profile.realtimeModel} · voce ${getVoiceProfile().voice}`,
       )
     }
   } catch {
@@ -1382,6 +1420,7 @@ async function speak(text) {
         text,
         personality: getPersonalitySettings(),
         accent: getAccentSettings(),
+        voiceProfile: els.voiceProfileSelect.value,
         customBehavior: getCustomBehavior(),
         magneticMode: state.magneticMode,
         wolfMode: state.wolfMode,
@@ -1665,7 +1704,8 @@ async function connectRealtime() {
   const realtimeModel = encodeURIComponent(getModelProfile().realtimeModel)
   const magneticMode = state.magneticMode ? '&magneticMode=1' : ''
   const wolfMode = state.wolfMode ? '&wolfMode=1' : ''
-  const res = await fetch(`/api/realtime/session?model=${realtimeModel}${magneticMode}${wolfMode}`, {
+  const voiceProfile = encodeURIComponent(els.voiceProfileSelect.value)
+  const res = await fetch(`/api/realtime/session?model=${realtimeModel}&voiceProfile=${voiceProfile}${magneticMode}${wolfMode}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/sdp'},
     body: localSdp,
@@ -1706,6 +1746,25 @@ function makeRealtimePrompt(text) {
   const summaryLength = getSummaryLengthPrompt()
   const customBehavior = getCustomBehaviorPrompt()
   const accent = getAccentPrompt()
+
+  if (state.wolfMode) {
+    return `
+# LETTURA WOLF FEDELE
+Pronuncia in ${language} integralmente il contenuto tra i marcatori.
+
+# REGOLE OBBLIGATORIE
+- Non riassumere, condensare, spiegare, commentare o riformulare.
+- Non omettere fatti o frasi. Mantieni ordine e significato originali.
+- Non aggiungere saluti, preamboli, appellativi, battute o conclusioni.
+- Applica il carattere Wolf soltanto a voce, ritmo, pause e autorevolezza.
+- ${accent}
+- ${customBehavior || 'Nessuna istruzione vocale personalizzata aggiuntiva.'}
+
+NUOVO_CONTENUTO_INIZIO
+${text}
+NUOVO_CONTENUTO_FINE
+`.trim()
+  }
 
   if (liveMode === 'summary') {
     return `
@@ -1922,6 +1981,11 @@ els.modelProfileSelect.addEventListener('change', () => {
   updateCostMonitor()
   checkBackend()
   setStatus(`Profilo ${getModelProfile().label} selezionato. Sarà usato dalla prossima chiamata.`)
+})
+els.voiceProfileSelect.addEventListener('change', () => {
+  updateActiveInstructions('local')
+  checkBackend()
+  setStatus(`Voce ${getVoiceProfile().label} selezionata. Sarà usata dalla prossima riproduzione.`)
 })
 els.costBudgetInput.addEventListener('input', updateCostMonitor)
 els.autoPauseCosts.addEventListener('change', updateCostMonitor)
