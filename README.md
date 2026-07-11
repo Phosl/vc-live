@@ -66,12 +66,12 @@ OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_VOICE=coral
 OPENAI_REALTIME_MODEL=gpt-realtime-1.5
 OPENAI_REALTIME_VOICE=coral
-VITE_READ_INTERVAL_MS=6000
+VITE_READ_INTERVAL_MS=10000
 ```
 
 La configurazione usa `coral` per una voce femminile naturale. `amber` e' una voce dell'esperienza ChatGPT, ma al momento non risulta tra le voci documentate per questa API. Per Realtime puoi provare anche `marin` o `cedar`, consigliate per qualita.
 
-`VITE_READ_INTERVAL_MS=6000` e' un buon default per ridurre costi e ripetizioni, lasciando a Codex il tempo di finire un blocco. Se vuoi piu reattivita, prova `4000` o `5000`.
+`VITE_READ_INTERVAL_MS=10000` e' un buon default per ridurre costi e ripetizioni, lasciando a Codex il tempo di finire un blocco. Se vuoi piu reattivita, prova `5000` o `6000`.
 
 Dopo ogni modifica a `.env`, ferma e riavvia `npm run dev`.
 

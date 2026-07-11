@@ -1,15 +1,30 @@
 {
   "folders": [
     {
-      "path": ".",
-    },
+      "path": "."
+    }
   ],
   "settings": {
     "workbench.colorTheme": "Dark 2026",
     "workbench.colorCustomizations": {
-      "titleBar.activeBackground": "#99ea6d",
-      "titleBar.activeForeground": "#000000",
-      "commandCenter.foreground": "#000000",
-    },
-  },
+      "titleBar.activeBackground": "#0b1020",
+      "titleBar.activeForeground": "#eef2ff",
+      "commandCenter.foreground": "#c7d2fe",
+      "sideBar.background": "#0f172a",
+      "sideBar.foreground": "#eef2ff",
+      "sideBar.border": "#5b7cfa",
+      "sideBarTitle.foreground": "#eef2ff",
+      "chat.requestBackground": "#0f172a",
+      "chat.requestBubbleBackground": "#1e293b",
+      "chat.requestBorder": "#5b7cfa",
+      "chat.requestCodeBorder": "#7dd3fc",
+      "chat.avatarBackground": "#5b7cfa",
+      "chat.avatarForeground": "#eef2ff",
+      "chat.slashCommandBackground": "#26314f",
+      "chat.slashCommandForeground": "#eef2ff",
+      "chat.editedFileForeground": "#7dd3fc",
+      "chat.linesAddedForeground": "#4ade80",
+      "chat.linesRemovedForeground": "#fecaca"
+    }
+  }
 }

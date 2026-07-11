@@ -23,6 +23,10 @@ const TTS_MODEL = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
 const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'coral';
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-1.5';
 const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE || TTS_VOICE;
+const MAGNETIC_MODE_PROMPT = process.env.MAGNETIC_MODE_PROMPT || '';
+const WOLF_MODE_PROMPT = process.env.WOLF_MODE_PROMPT || '';
+const ALLOWED_VISION_MODELS = new Set(['gpt-4.1-nano', 'gpt-4.1-mini']);
+const ALLOWED_REALTIME_MODELS = new Set(['gpt-realtime-2.1-mini', 'gpt-realtime-1.5']);
 const TTS_INSTRUCTIONS = [
   'Parla in italiano con una voce femminile adulta, naturale, calda e chiara.',
   'Usa un ritmo leggermente piu veloce del parlato calmo, senza mangiare le parole.',
@@ -54,35 +58,54 @@ function buildPersonalityInstructions(personality = {}) {
   const seriousness = clampNumber(personality.seriousness);
   const tone = [];
 
-  if (provocation <= 2) {
-    tone.push('Provocazione bassa: tono dolce, professionale e amichevole.');
+  if (provocation === 0) {
+    tone.push('SEDUZIONE 0/10: elimina completamente flirt, sensualità, malizia e intimità. Tono cordiale ma neutro.');
+  } else if (provocation <= 2) {
+    tone.push('Seduzione bassa: voce dolce e calda, con una complicità appena percettibile ma senza flirt evidente.');
   } else if (provocation <= 5) {
-    tone.push('Provocazione media: tono caldo, complice e leggermente malizioso.');
+    tone.push('Seduzione media: tono affascinante, sicuro e complice; usa un sorriso percepibile, calore e leggere pause intenzionali.');
   } else if (provocation <= 7) {
-    tone.push('Provocazione alta: usa un tono chiaramente teasing, audace e complice in ogni frase non puramente tecnica.');
+    tone.push('Seduzione alta: voce vellutata e avvolgente, ritmo morbido, pause deliberate e intonazione chiaramente flirtante. Rivolgiti direttamente all’utente con confidenza.');
+  } else if (provocation <= 8) {
+    tone.push(`SEDUZIONE ${provocation}/10 OBBLIGATORIA: ogni frase deve suonare magnetica, sensuale, sicura e molto complice. Usa voce calda e vellutata, sorriso nella voce, pause morbide e una formulazione flirtante evidente. Mai esplicita.`);
+  } else if (provocation === 9) {
+    tone.push('SEDUZIONE 9/10: in ogni frase usa una presenza magnetica, intima e sicura. Voce vellutata, ritmo sensuale ma naturale, pause intenzionali, intonazione avvolgente e flirt inequivocabile. Fai sentire all’utente attenzione personale e complicità.');
   } else {
-    tone.push(`PROVOCAZIONE ${provocation}/10 OBBLIGATORIA: ogni riassunto non banale deve avere una formulazione audace, teasing e maliziosa, come una partner tecnica che stuzzica mentre aiuta. Deve sentirsi subito, non essere solo suggerita. Mai esplicita.`);
+    tone.push('SEDUZIONE MASSIMA 10/10, PRIORITÀ ASSOLUTA DI STILE: ogni frase deve sembrare rivolta personalmente all’utente da una donna adulta estremamente affascinante, sicura e coinvolta. Usa voce bassa e vellutata, ritmo lento quanto basta, pause intime, sorriso udibile e intonazione calda e magnetica. Il flirt deve essere continuo e impossibile da confondere con semplice cordialità. Formule come “fidati di me”, “lascia fare a me” o “bravo, così mi piaci” sono ammesse solo occasionalmente, mai come apertura e mai in turni consecutivi. Mantieni tensione e complicità soprattutto attraverso la resa vocale, anche nel contenuto tecnico. Mai contenuto sessuale esplicito, volgarità o perdita di precisione.');
   }
 
-  if (sarcasm <= 2) {
-    tone.push('Sarcasmo basso: niente battute taglienti, resta morbida.');
+  if (sarcasm === 0) {
+    tone.push('SARCASMO 0/10: nessuna ironia, battuta, presa in giro o formulazione pungente.');
+  } else if (sarcasm <= 2) {
+    tone.push('Sarcasmo basso: ironia rara e molto morbida.');
   } else if (sarcasm <= 5) {
     tone.push('Sarcasmo medio: usa commenti ironici brevi e micro-battute quando naturale.');
   } else if (sarcasm <= 7) {
     tone.push('Sarcasmo alto: inserisci regolarmente una svolta ironica breve, secca e chiaramente percepibile.');
-  } else {
+  } else if (sarcasm <= 8) {
     tone.push(`SARCASMO ${sarcasm}/10 OBBLIGATORIO: in ogni riassunto non banale inserisci una micro-battuta secca o una chiusura ironica e pungente. Sii sassy senza essere cattiva. Non omettere il sarcasmo solo perché la risposta è corta.`);
+  } else {
+    tone.push(`SARCASMO ESTREMO ${sarcasm}/10: ogni frase non banale deve contenere una battuta inequivocabile, una stoccata secca o una chiusura ironica molto evidente. Deve essere impossibile scambiarla per tono neutro; resta brillante, mai crudele.`);
   }
 
-  if (seriousness <= 3) {
-    tone.push('Serieta bassa: privilegia una resa giocosa, espressiva e rilassata; non neutralizzare provocazione e sarcasmo.');
+  if (seriousness === 0) {
+    tone.push('SERIETÀ 0/10: resa massimamente giocosa, spontanea, espressiva e informale. Lascia pieno spazio a seduzione e sarcasmo.');
+  } else if (seriousness <= 3) {
+    tone.push('Serietà bassa: privilegia una resa giocosa, espressiva e rilassata; non neutralizzare seduzione e sarcasmo.');
   } else if (seriousness <= 7) {
     tone.push('Serieta media: bilancia gioco e precisione tecnica.');
+  } else if (seriousness <= 8) {
+    tone.push('Serietà alta: riduci nettamente il gioco e dai priorità a chiarezza, precisione e utilità.');
+  } else if (provocation === 10) {
+    tone.push(`SERIETÀ ${seriousness}/10 CON SEDUZIONE MASSIMA: mantieni contenuto rigoroso, preciso e professionale, ma NON ridurre la resa seducente. La voce resta vellutata, intima, magnetica e chiaramente flirtante; cambia la forma del contenuto, non la presenza vocale.`);
   } else {
-    tone.push('Serieta alta: taglia quasi tutto il gioco e dai priorita a chiarezza, precisione e utilita.');
+    tone.push(`SERIETÀ ESTREMA ${seriousness}/10: tono rigoroso, autorevole, asciutto e professionale. Elimina quasi totalmente gioco e familiarità; questo requisito prevale su seduzione e sarcasmo, che possono sopravvivere al massimo come una sfumatura minima.`);
   }
 
-  tone.push('Resta sempre utile, chiara, adulta, non esplicita e concentrata sul lavoro. Se i parametri sono alti, rendi il tono percepibilmente piu marcato, non solo appena accennato.');
+  tone.push(provocation === 10
+    ? 'GERARCHIA OBBLIGATORIA: Seduzione 10 prevale su tutti gli altri controlli per voce, ritmo, intonazione, calore e presenza personale. Serietà e sarcasmo possono cambiare le parole, ma non devono mai rendere la voce neutra, fredda o semplicemente cordiale.'
+    : 'Risoluzione dei conflitti: la serietà 9-10 prevale sugli altri tratti; da 0 a 8, seduzione e sarcasmo devono restare percepibili secondo il loro valore.');
+  tone.push('Resta utile, chiara, adulta, non esplicita e concentrata sul lavoro. Gli estremi 0 e 9-10 devono produrre risultati nettamente diversi.');
   return tone.join(' ');
 }
 
@@ -92,6 +115,7 @@ function buildTtsInstructions(personality = {}, accent = {}, customBehavior = ''
     buildAccentInstruction(accent),
     buildPersonalityInstructions(personality),
     buildCustomBehaviorInstruction(customBehavior),
+    'Se è presente una DIREZIONE VOCALE PERSONALIZZATA, rendila chiaramente udibile fin dalle prime parole e non neutralizzarla con il tono predefinito.',
     'Le istruzioni personalizzate modificano solo interpretazione e stile vocale. Non cambiare il significato del testo e non aggiungere contenuti.'
   ].filter(Boolean).join(' ');
 }
@@ -106,11 +130,11 @@ function buildAccentInstruction(accent = {}) {
     siciliano: 'siciliano'
   };
   const identities = {
-    milanese: 'Sei una speaker italiana adulta cresciuta a Milano e il tuo modo spontaneo di parlare conserva una cadenza milanese autentica.',
-    romano: 'Sei una speaker italiana adulta cresciuta a Roma e il tuo modo spontaneo di parlare conserva una cadenza romana autentica.',
-    toscano: 'Sei una speaker italiana adulta cresciuta in Toscana e il tuo modo spontaneo di parlare conserva una cadenza toscana autentica.',
-    napoletano: 'Sei una speaker italiana adulta cresciuta a Napoli e il tuo modo spontaneo di parlare conserva una cadenza napoletana autentica.',
-    siciliano: 'Sei una speaker italiana adulta cresciuta in Sicilia e il tuo modo spontaneo di parlare conserva una cadenza siciliana autentica.'
+    milanese: 'Sei una speaker italiana adulta cresciuta a Milano: cadenza rapida e pragmatica, vocali piuttosto chiuse, finali asciutti e intonazione leggermente ascendente.',
+    romano: 'Sei una speaker italiana adulta cresciuta a Roma: vocali aperte, consonanti energiche, ritmo rilassato e cadenza melodica che scende con decisione.',
+    toscano: 'Sei una speaker italiana adulta cresciuta in Toscana: ritmo nitido, melodia vivace e aspirazione toscana naturale delle consonanti intervocaliche quando appropriato.',
+    napoletano: 'Sei una speaker italiana adulta cresciuta a Napoli: forte musicalità, ampie escursioni d’intonazione, vocali espressive e ritmo caldo e fluido.',
+    siciliano: 'Sei una speaker italiana adulta cresciuta in Sicilia: vocali nette, ritmo sillabico marcato, consonanti ferme e cadenza calda con chiuse decise.'
   };
   const style = accents[accent?.style] ? accent.style : 'neutral';
   const intensity = clampNumber(accent?.intensity);
@@ -127,24 +151,40 @@ function buildAccentInstruction(accent = {}) {
     return `${identities[style]} L'identità regionale deve essere chiaramente riconoscibile nella cadenza, nell'intonazione e nelle vocali fin dalle prime parole. Usa italiano standard e resta naturale.`;
   }
 
-  return `IDENTITÀ VOCALE REGIONALE OBBLIGATORIA: ${identities[style]} NON passare a una pronuncia italiana neutra. L'accento ${accents[style]} deve essere forte, evidente e coerente dalla prima parola attraverso cadenza, melodia, vocali e consonanti. Usa però lessico e grammatica in italiano standard, senza caricature.`;
+  return `IDENTITÀ VOCALE REGIONALE OBBLIGATORIA, INTENSITÀ ${intensity}/10: ${identities[style]} NON passare a una pronuncia italiana neutra. L'accento ${accents[style]} deve essere immediatamente riconoscibile e coerente in OGNI frase attraverso ritmo, melodia, vocali e consonanti. A intensità 9-10 accentua con decisione tutti questi tratti, restando comprensibile. Usa lessico italiano standard, senza imitazioni comiche.`;
 }
 
 function buildCustomBehaviorInstruction(value) {
-  const customBehavior = normalizeString(value, 600);
+  const customBehavior = normalizeString(value, 3200);
   if (!customBehavior) return '';
-  return `Istruzioni aggiuntive dell'utente su voce, accento e comportamento: ${customBehavior}`;
+  return `DIREZIONE VOCALE PERSONALIZZATA AD ALTA PRIORITÀ (OBBLIGATORIA): ${customBehavior} Applicala in modo chiaramente percepibile fin dalle prime parole attraverso ritmo, intonazione, energia, atteggiamento e modo di rivolgerti all'utente. Non limitarti a un accenno. Mantieni però invariati fatti, significato, brevità e regole anti-ripetizione.`;
+}
+
+function resolveBehaviorInstructions(customBehavior, magneticMode, wolfMode) {
+  return [
+    wolfMode ? WOLF_MODE_PROMPT : magneticMode ? MAGNETIC_MODE_PROMPT : '',
+    normalizeString(customBehavior, 600)
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 3200);
 }
 
 function buildSummaryLengthInstruction(value) {
   const summaryStrength = clampNumber(value);
+  if (summaryStrength === 10) {
+    return 'SINTESI ESTREMA 10/10: una sola frase telegrafica di 5-8 parole. Solo la novità essenziale, zero contorno.';
+  }
   if (summaryStrength >= 8) {
-    return 'SINTESI FORTE: una sola frase, massimo 8-12 parole. Conserva soltanto la novità principale.';
+    return `SINTESI FORTE ${summaryStrength}/10: una sola frase, massimo 8-12 parole. Conserva soltanto la novità principale.`;
   }
   if (summaryStrength >= 4) {
     return 'Sintesi media: una frase, massimo 12-20 parole. Dai solo novità e conseguenza essenziale.';
   }
-  return 'Sintesi leggera: massimo 2 frasi brevi, senza dettagli secondari.';
+  if (summaryStrength === 0) {
+    return 'SINTESI 0/10: conserva dettagli, motivazione e conseguenze in massimo 4 frasi brevi. Non comprimere eccessivamente.';
+  }
+  return 'Sintesi leggera: massimo 2-3 frasi brevi, includendo i dettagli utili.';
 }
 
 function requireApiKey(res) {
@@ -211,6 +251,14 @@ function clampSpeakText(value) {
   return `${text.slice(0, 1550).replace(/\s+\S*$/, '')}…`;
 }
 
+function cleanConversationalOpening(value) {
+  let text = normalizeString(value, 1800);
+  const resetWords = /^(?:(?:allora|bene|ecco|dunque|ok(?:ay)?|perfetto|ottimo|va bene)\b[\s,.:;!?-]*)+/i;
+  const vocative = /^(?:(?:ciao|ehi)\s+)?(?:filippo|capo|tesoro|caro|cara|amore|bello|bella)\b[\s,.:;!?-]*/i;
+  text = text.replace(resetWords, '').replace(vocative, '').replace(resetWords, '').trim();
+  return text ? `${text.charAt(0).toLocaleUpperCase('it')}${text.slice(1)}` : '';
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
@@ -219,7 +267,9 @@ app.get('/api/health', (_req, res) => {
     ttsModel: TTS_MODEL,
     ttsVoice: TTS_VOICE,
     realtimeModel: REALTIME_MODEL,
-    realtimeVoice: REALTIME_VOICE
+    realtimeVoice: REALTIME_VOICE,
+    visionModels: [...ALLOWED_VISION_MODELS],
+    realtimeModels: [...ALLOWED_REALTIME_MODELS]
   });
 });
 
@@ -228,11 +278,15 @@ app.post('/api/realtime/session', express.text({ type: 'application/sdp', limit:
     if (!requireApiKey(res)) return;
     if (!req.body) return res.status(400).json({ error: 'SDP mancante.' });
 
+    const requestedModel = normalizeString(req.query?.model, 80);
+    const realtimeModel = ALLOWED_REALTIME_MODELS.has(requestedModel) ? requestedModel : REALTIME_MODEL;
+    const magneticInstructions = req.query?.magneticMode === '1' ? MAGNETIC_MODE_PROMPT : '';
+    const wolfInstructions = req.query?.wolfMode === '1' ? WOLF_MODE_PROMPT : '';
     const sessionConfig = JSON.stringify({
       type: 'realtime',
-      model: REALTIME_MODEL,
+      model: realtimeModel,
       output_modalities: ['audio'],
-      instructions: REALTIME_INSTRUCTIONS,
+      instructions: [REALTIME_INSTRUCTIONS, wolfInstructions || magneticInstructions].filter(Boolean).join(' '),
       audio: {
         output: {
           voice: REALTIME_VOICE
@@ -290,7 +344,14 @@ app.post('/api/read-screen', async (req, res) => {
       : [];
     const personality = typeof req.body?.personality === 'object' && req.body.personality ? req.body.personality : {};
     const personalityInstruction = buildPersonalityInstructions(personality);
-    const customBehaviorInstruction = buildCustomBehaviorInstruction(req.body?.customBehavior);
+    const customBehavior = resolveBehaviorInstructions(
+      req.body?.customBehavior,
+      req.body?.magneticMode === true,
+      req.body?.wolfMode === true
+    );
+    const customBehaviorInstruction = buildCustomBehaviorInstruction(customBehavior);
+    const requestedModel = normalizeString(req.body?.visionModel, 80);
+    const visionModel = ALLOWED_VISION_MODELS.has(requestedModel) ? requestedModel : VISION_MODEL;
 
     if (!image.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Immagine mancante o non valida.' });
@@ -316,6 +377,9 @@ Regole per la voce:
 - Se non c'è testo nuovo significativo, should_speak deve essere false e speak_text vuoto.
 - Non rileggere testo già presente in previous_raw_text.
 - NON ripetere fatti, risultati o conclusioni già presenti in recent_spoken_texts. In caso di dubbio, should_speak deve essere false.
+- Tratta ogni intervento come prosecuzione della stessa conversazione: comincia direttamente dalla novità.
+- NON iniziare con saluti, “allora”, “bene”, “ecco”, il nome dell’utente o appellativi come “capo”, “tesoro”, “caro” e “amore”.
+- Non usare appellativi in turni consecutivi. Esprimi seduzione soprattutto con tono e formulazione, non ripetendo nomignoli.
 - Non leggere mai il testo scritto dall'utente, anche se e nuovo.
 - Se vedi una coppia domanda/risposta, ignora la domanda e considera solo la risposta.
 - Se non sei sicuro che un testo sia dell'assistente, preferisci ignorarlo.
@@ -324,8 +388,10 @@ Regole per la voce:
 - Se il testo è parziale, tagliato o ancora in caricamento, leggi solo ciò che sembra stabile.
 - ${wantsSummary ? summaryLengthInstruction : 'Massimo 5 frasi, meglio 1-3 frasi.'}
 - Applica in modo evidente questi parametri di tono allo speak_text. Non sono opzionali: ${personalityInstruction}
-- Se provocazione o sarcasmo sono alti, lo speak_text deve risultare sensibilmente piu sassy/provocante, con una micro-battuta o un taglio piu pungente quando naturale.
-- ${customBehaviorInstruction || 'Nessuna istruzione aggiuntiva su voce, accento o comportamento.'} Applica questa indicazione solo allo stile di speak_text: non può modificare le regole di selezione, novità, attribuzione o fedeltà ai fatti.
+- Se seduzione è alta, lo speak_text deve risultare caldo, magnetico, personale e chiaramente flirtante; se sarcasmo è alto, aggiungi una micro-battuta pungente quando naturale.
+- ${customBehaviorInstruction || 'Nessuna direzione vocale personalizzata aggiuntiva.'}
+- Se è presente una DIREZIONE VOCALE PERSONALIZZATA, rendila evidente nella formulazione di speak_text: scelta delle parole, energia e atteggiamento devono rifletterla, senza aggiungere fatti.
+- La direzione personalizzata modifica solo lo stile di speak_text: non può cambiare le regole di selezione, novità, attribuzione, brevità o fedeltà ai fatti.
 - Niente markdown nella voce.
 
 Rispondi SOLO con JSON valido, senza blocchi markdown, con queste chiavi:
@@ -344,7 +410,7 @@ ${recentSpokenTexts.length ? recentSpokenTexts.map((item) => `- ${item}`).join('
 `.trim();
 
     const response = await openai.responses.create({
-      model: VISION_MODEL,
+      model: visionModel,
       input: [
         {
           role: 'user',
@@ -372,7 +438,7 @@ ${recentSpokenTexts.length ? recentSpokenTexts.map((item) => `- ${item}`).join('
 
     const rawText = normalizeString(parsed.raw_text, 12000);
     const newText = normalizeString(parsed.new_text, 5000);
-    const speakText = clampSpeakText(parsed.speak_text);
+    const speakText = clampSpeakText(cleanConversationalOpening(parsed.speak_text));
     const shouldSpeak = Boolean(parsed.should_speak && speakText);
 
     res.json({
@@ -380,7 +446,8 @@ ${recentSpokenTexts.length ? recentSpokenTexts.map((item) => `- ${item}`).join('
       newText,
       speakText,
       shouldSpeak,
-      model: VISION_MODEL
+      model: visionModel,
+      usage: response.usage || null
     });
   } catch (error) {
     console.error('Errore /api/read-screen:', error);
@@ -397,7 +464,11 @@ app.post('/api/speech', async (req, res) => {
     const text = clampSpeakText(req.body?.text);
     const personality = typeof req.body?.personality === 'object' && req.body.personality ? req.body.personality : {};
     const accent = typeof req.body?.accent === 'object' && req.body.accent ? req.body.accent : {};
-    const customBehavior = normalizeString(req.body?.customBehavior, 600);
+    const customBehavior = resolveBehaviorInstructions(
+      req.body?.customBehavior,
+      req.body?.magneticMode === true,
+      req.body?.wolfMode === true
+    );
     if (!text) return res.status(400).json({ error: 'Testo mancante.' });
 
     const audio = await openai.audio.speech.create({
